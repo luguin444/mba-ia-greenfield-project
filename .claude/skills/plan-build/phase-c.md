@@ -19,7 +19,7 @@ Append-mode reads `progress.md` (to classify each delta against per-SI status) a
 
 Read the plan file's frontmatter `sources_mtime` block. For each `<path>: <ISO-8601 timestamp>` entry that points to a `docs/decisions/technical-decisions-*.md` file:
 
-1. Run `stat -c '%y' <path>` to get current mtime.
+1. Run `date -r <path> +%Y-%m-%dT%H:%M:%S%z` to get current mtime.
 2. If current mtime > recorded mtime → file edited since last build; mark as **dirty source**.
 
 For each dirty source:
@@ -37,7 +37,7 @@ If the resulting delta event list is empty, abort with: `"No deltas detected in 
 
 ## C2. Delta classification per event
 
-**Frontend Runtime TD pre-check.** Before the parameter-extraction grep below, look up the affected TD's `**Renders in:**` value via bounded grep on the dirty source file: `Grep -nE '^\*\*Renders in:\*\* ' <decisions-doc>` within the TD's line range (`### TD-NN:` header to next `### TD-` or EOF). Then:
+**Frontend Runtime TD pre-check.** Before the parameter-extraction grep below, look up the affected TD's `**Renders in:**` value via bounded grep on the dirty source file: `Grep -nE '^\*\*Renders in:\*\* ' <decisions-doc>` within the TD's line range (`## TD-NN:` header to next `## TD-` or EOF). Then:
 
 - **TD has `Renders in: frontend-runtime`** (explicit) → route the event through the Frontend Runtime delta path (below) instead of the parameter-extraction grep. The classification is structurally different: edits target the `### Frontend Runtime → #### {td-slug}/TD-NN` subsection (when the subsection already exists in the plan) and the `SI-NN.X` Setup/Migration/Verification SIs derived from it (per `templates/frontend-runtime-si.md`).
 - **TD has `Renders in: ui-contracts`** OR marker absent → continue with the standard parameter-extraction flow below (backend / per-screen UI behavior).
@@ -110,7 +110,7 @@ For each accepted change, Edit the plan file:
 
 ## C5. Refresh `sources_mtime`
 
-After all Edits applied, refresh `sources_mtime` entries in the plan file's frontmatter for each dirty source processed: `stat -c '%y' <path>` → write ISO-8601 timestamp. This prevents the same deltas from re-firing on the next `/plan-build` invocation.
+After all Edits applied, refresh `sources_mtime` entries in the plan file's frontmatter for each dirty source processed: `date -r <path> +%Y-%m-%dT%H:%M:%S%z` → write ISO-8601 timestamp. This prevents the same deltas from re-firing on the next `/plan-build` invocation.
 
 **Modern-mode interaction with specs.** O refresh do `sources_mtime` torna `mtime(plan) > Last sync(spec)` para todo spec PRESERVED existente — o que dispararia falso STALE no `/implement` preflight. Por isso, em modo modern (frontmatter declara `test_specs_aware: true`), após `/plan-build` append-mode terminar, o user **deve** rodar `/plan-test-specs <slug>`, que re-stampa `Last sync` dos PRESERVED + processa NEW (placeholders adicionados na C2). O hint condicional do C7 (vide `SKILL.md` § "Output contract → Phase C7") emite essa instrução automaticamente quando aplicável; phase-c.md NÃO duplica o template do output — o conditional emit vive **exclusivamente** em `SKILL.md`.
 

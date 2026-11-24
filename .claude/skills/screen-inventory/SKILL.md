@@ -6,6 +6,8 @@ disable-model-invocation: true
 
 # Screen Inventory
 
+> **Phase naming:** every `phase-NN-{slug}` / `phase-{NN}-{slug}` token in this file is the *normalized phase name* defined in `.claude/skills/plan-pipeline/SKILL.md` → "Phase name normalization": when the slug already starts with `phase-NN-`, do not prepend it again (slug `phase-03-videos` → `docs/phases/phase-03-videos/phase-03-videos.md`, never `phase-03-phase-03-videos`).
+
 Generate a screen inventory for a project phase. This document sits between the technical decisions and the implementation plan — it captures what exists visually in Figma, classifies each component's behavior, and ties server-connected components to capabilities in the project plan.
 
 This skill is the front-end counterpart of `research`. It produces **verbs of intent** (e.g., "disparar upload de vídeo novo"), not HTTP specifications — which lets `plan-validate` reconcile the UI and API sources via the UIG-N check and catch gaps in either direction.

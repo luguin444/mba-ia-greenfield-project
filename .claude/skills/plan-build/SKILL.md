@@ -6,6 +6,8 @@ disable-model-invocation: true
 
 # Plan Pipeline — Stage 4: Build (orchestrator)
 
+> **Phase naming:** every `phase-NN-{slug}` / `phase-{NN}-{slug}` token in this file is the *normalized phase name* defined in `.claude/skills/plan-pipeline/SKILL.md` → "Phase name normalization": when the slug already starts with `phase-NN-`, do not prepend it again (slug `phase-03-videos` → `docs/phases/phase-03-videos/phase-03-videos.md`, never `phase-03-phase-03-videos`).
+
 This file is the **dispatcher**. It runs preflight gates, decides which phase to execute, and hands off to a companion file:
 
 - `phase-a.md` — scaffold + Technical Specifications + A5 pause.

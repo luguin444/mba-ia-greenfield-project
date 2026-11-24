@@ -1,5 +1,7 @@
 # Plan Pipeline — Stage 4: Build → Phase A (Scaffold + Technical Specifications)
 
+> **Phase naming:** every `phase-NN-{slug}` / `phase-{NN}-{slug}` token in this file is the *normalized phase name* defined in `.claude/skills/plan-pipeline/SKILL.md` → "Phase name normalization": when the slug already starts with `phase-NN-`, do not prepend it again (slug `phase-03-videos` → `docs/phases/phase-03-videos/phase-03-videos.md`, never `phase-03-phase-03-videos`).
+
 This file is loaded by `.claude/skills/plan-build/SKILL.md` after Gate 10 dispatches a fresh build (or `--rebuild`). Read SKILL.md for preflight gates, dispatcher rules, hard rules, output contract, and rerun semantics — they apply to every phase.
 
 Phase A writes the artifact scaffold + Technical Specifications subsections + four sentinelas, then pauses at A5 for the user to confirm continuation into Phase B.
@@ -55,7 +57,7 @@ Build a per-subsection in-memory list of applicable TD refs for use in A4.
 
 ## A3. Write scaffold with sentinela placeholders
 
-Write `{target_path}` with the full skeleton via a single `Write` call. Populate `sources_mtime` by running `stat -c '%y' <file>` via Bash for each source listed in context.md's `sources_mtime` and recording ISO-8601 timestamps.
+Write `{target_path}` with the full skeleton via a single `Write` call. Populate `sources_mtime` by running `date -r <file> +%Y-%m-%dT%H:%M:%S%z` via Bash for each source listed in context.md's `sources_mtime` and recording ISO-8601 timestamps.
 
 **Frontmatter emission rules:**
 

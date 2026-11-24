@@ -112,7 +112,16 @@ Every stage skill needs the slug for its artifacts. Under the slicing model, **�
 
 1. Read `docs/decisions/technical-decisions-{slug}.md` frontmatter.
 2. Require `scope_type: phase` and a single integer in `related_phases`.
-3. Extract `NN` from `related_phases[0]`; target directory `docs/phases/phase-NN-{slug}/`.
+3. Extract `NN` from `related_phases[0]`; target directory `docs/phases/phase-NN-{slug}/` (normalized — see "Phase name normalization" below).
+
+### Phase name normalization (applies to every `phase-NN-{slug}` token)
+
+Throughout every pipeline skill and agent, the literal token `phase-NN-{slug}` denotes the **normalized phase name**, used for the phase directory, the plan file basename, the `name:` frontmatter field and the screen-inventory filename. Compute it as:
+
+- If `{slug}` already starts with `phase-NN-` (same zero-padded `NN`) → the phase name is `{slug}` itself (no duplicated prefix).
+- Otherwise → the phase name is `phase-NN-{slug}`.
+
+Examples: slug `phase-03-videos` (from `technical-decisions-phase-03-videos.md`) → `docs/phases/phase-03-videos/phase-03-videos.md`; slug `upload-processing` → `docs/phases/phase-03-upload-processing/phase-03-upload-processing.md`. This matches the existing repo precedent (`technical-decisions-phase-02-auth.md` ↔ `docs/phases/phase-02-auth/`). Never create a `phase-NN-phase-NN-*` directory.
 
 ### Task mode (slug or prose)
 
@@ -136,7 +145,15 @@ Every artifact (`context.md`, `validation.md`, `library-refs.md`) carries a `sou
 
 **Never auto-regenerate.** Staleness always aborts with an explicit next-command. This keeps every regeneration user-triggered and predictable — the user's original pain was silent re-reads; this rule prevents them.
 
-Populate `sources_mtime` by running `stat -c '%y' <file>` (or `ls -l --time=full`) when building each artifact and recording ISO-8601 timestamps.
+Populate `sources_mtime` by recording each file's mtime as an ISO-8601 timestamp when building each artifact.
+
+**Portable mtime commands (GNU/Linux and BSD/macOS).** `stat -c` and `date -d` are GNU-only and fail on macOS. Use these portable forms everywhere a skill needs an mtime:
+
+- ISO-8601 mtime: `date -r <file> +%Y-%m-%dT%H:%M:%S%z` (works on GNU and BSD `date`).
+- Epoch mtime (integer seconds, for comparisons): `date -r <file> +%s`.
+- Comparing a recorded ISO timestamp against a file: convert both to epoch seconds before comparing (offsets may be written as `-03:00` or `-0300`). Portable conversion: `node -e 'console.log(Math.floor(Date.parse(process.argv[1])/1000))' "<iso>"`.
+
+All pipeline skills use these forms; do not reintroduce `stat -c` / `date -d`.
 
 ## Shared convention — `status: clean|dirty` gate
 
@@ -230,7 +247,7 @@ Every stage skill applies these mandatory rules to keep the main context window 
 
 2. **Bounded grep via sibling-anchor** — to extract a section (a TD block, an SI block, a named subsection), use `Grep -n` to locate both the target header AND the next sibling header of the same level, then `Read` the exact line range. Never use `-A N` blindly — it over-fetches or under-fetches.
 
-   Example: to read TD-05 from a decisions doc, grep `^### TD-0[56]` with `-n`; take the two line numbers; Read from the first to the second minus one.
+   Example: to read TD-05 from a decisions doc, grep `^## TD-0[56]` with `-n`; take the two line numbers; Read from the first to the second minus one.
 
 3. **Structured return contracts for subagents** — every subagent prompt ends with a strict output contract: "Return ONLY a markdown table with columns X/Y/Z. No prose. No quotes longer than one line from source. Max N rows." Forces the subagent to distill, not relay.
 
@@ -344,7 +361,7 @@ Both follow the minimum frontmatter shape above.
 
 ## Conventions inherited from existing phase docs
 
-The format of the final planning artifact — `phase-NN-{slug}.md` or `task-{slug}.md` — (Step Implementations, Technical Specifications, Dependency Map, Deliverables) is established by `docs/phases/phase-01-base-setup/phase-01-base-setup.md`. `plan-build` replicates this format regardless of mode. Cross-phase conventions (Portuguese prose + English identifiers, per-TD traceability via inline backticked refs, SI template structure, etc.) propagate through `context.md`'s `## Inherited Conventions` section: `phases-reader` extracts them from prior phases (reading each phase's `context.md`, with a fallback to a `## Conventions to Match` section in the phase doc for legacy phases that still carry one), and `plan-context` flattens them into the current phase's (or task's) `## Inherited Conventions`. Final artifacts never emit a conventions section themselves — inheritance flows through `context.md`.
+The format of the final planning artifact — `phase-NN-{slug}.md` or `task-{slug}.md` — (Step Implementations, Technical Specifications, Dependency Map, Deliverables) is established by `docs/phases/phase-02-auth/phase-02-auth.md` (backend) and `docs/phases/phase-02-auth-frontend/phase-02-auth-frontend.md` (frontend). `plan-build` replicates this format regardless of mode. Cross-phase conventions (Portuguese prose + English identifiers, per-TD traceability via inline backticked refs, SI template structure, etc.) propagate through `context.md`'s `## Inherited Conventions` section: `phases-reader` extracts them from prior phases (reading each phase's `context.md`, with a fallback to a `## Conventions to Match` section in the phase doc for legacy phases that still carry one), and `plan-context` flattens them into the current phase's (or task's) `## Inherited Conventions`. Final artifacts never emit a conventions section themselves — inheritance flows through `context.md`.
 
 When UI is in scope, the same format contract for the final artifact applies: `UI Contracts` and `UI ↔ API Traceability Matrix` subsections in Technical Specifications follow the templates under `.claude/skills/plan-build/templates/tech-specs/` (`ui-contracts.md`, `traceability-matrix.md`). Cross-phase UI conventions (component naming, reuse patterns, routing conventions) propagate through `context.md`'s `## Inherited Conventions` section like any other convention — `phases-reader` extracts them as-is.
 

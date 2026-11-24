@@ -348,7 +348,7 @@ Multi-line entries are permitted when the rationale needs elaboration; subsequen
 **Discriminator with Supersede (the other primitive):**
 
 - **Revision** — `**Decision:**` field's Option letter stays the same. Use this block.
-- **Supersede** — `**Decision:**` field's Option letter changes (or the TD is replaced by a different TD entirely). The supersede marker (`<!-- status: superseded-by: {slug}/TD-NN -->`) goes on the line immediately after `### TD-YY:` heading, NOT in this block.
+- **Supersede** — `**Decision:**` field's Option letter changes (or the TD is replaced by a different TD entirely). The supersede marker (`<!-- status: superseded-by: {slug}/TD-NN -->`) goes on the line immediately after `## TD-YY:` heading, NOT in this block.
 
 The two primitives are mutually exclusive per change event: a single change is either a Revision or a Supersede, never both.
 
