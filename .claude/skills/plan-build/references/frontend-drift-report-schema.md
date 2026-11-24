@@ -1,5 +1,7 @@
 # frontend-drift-report.md — Schema Reference
 
+> **Phase naming:** every `phase-NN-{slug}` / `phase-{NN}-{slug}` token in this file is the *normalized phase name* defined in `.claude/skills/plan-pipeline/SKILL.md` → "Phase name normalization": when the slug already starts with `phase-NN-`, do not prepend it again (slug `phase-03-videos` → `docs/phases/phase-03-videos/phase-03-videos.md`, never `phase-03-phase-03-videos`).
+
 Canonical format definition for `frontend-drift-report.md` files emitted by drift-audit SIs (`SI-NN.X.0`).
 
 This file is the **single source of truth** for the report's shape. Both `/plan-build` (author of the emit rules) and `/implement` (consumer that reads, applies, and re-writes report sections) MUST conform to this schema. Operational logic — when to invoke an audit, how to compose Decision values, how to apply them at SI-Xa — lives in the respective SKILL.md files; this document defines only the file format.

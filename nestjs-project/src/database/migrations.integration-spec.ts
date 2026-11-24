@@ -14,6 +14,11 @@ const MANAGED_TABLES = [
   'verification_tokens',
 ];
 
+// Postgres enum types created by migrations survive DROP TABLE ... CASCADE,
+// so re-running the migrations fails with "type already exists" unless they
+// are dropped explicitly.
+const MANAGED_ENUM_TYPES = ['verification_tokens_type_enum'];
+
 describe('Database migrations (integration)', () => {
   let dataSource: DataSource;
 
@@ -37,13 +42,21 @@ describe('Database migrations (integration)', () => {
       ),
       dataSource.query(`DROP TABLE IF EXISTS "migrations" CASCADE`),
     ]);
+    await Promise.all(
+      MANAGED_ENUM_TYPES.map((type) =>
+        dataSource.query(`DROP TYPE IF EXISTS "${type}" CASCADE`),
+      ),
+    );
   });
 
   afterAll(async () => {
     // The second test undoes the last migration, leaving token tables missing.
     // Re-apply so the shared DB is fully migrated when subsequent suites run.
-    await dataSource.runMigrations();
-    await dataSource.destroy();
+    try {
+      await dataSource.runMigrations();
+    } finally {
+      await dataSource.destroy();
+    }
   });
 
   it('should apply all migrations and create all four tables', async () => {

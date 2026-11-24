@@ -53,7 +53,7 @@ Always include a 4th option: `"Nenhum — criar novo TD"`.
 
 The `AskUserQuestion` is single-select with these 4 options (3 candidates + "Nenhum").
 
-When the user picks a candidate, **first verify the TD's status** via bounded grep on its decisions doc (`Grep -n '^### TD-NN:' <file>` to locate the TD's range, then bounded `Read` of that range). Find the `**Decision:**` line:
+When the user picks a candidate, **first verify the TD's status** via bounded grep on its decisions doc (`Grep -n '^## TD-NN:' <file>` to locate the TD's range, then bounded `Read` of that range). Find the `**Decision:**` line:
 
 - If `**Decision:**` is `_[pending]_` → abort with: `"TD-NN está pending — rode /plan-validate <scope> para surfaceear o OQ-N do TD pending, depois /plan-resolve <scope> para preencher a decisão. /decide só opera sobre TDs já decididos: pending TDs não suportam Revision (não há decisão a revisar) nem Reaffirm (não há decisão a reafirmar). Pular /plan-validate antes de /plan-resolve cai em 'validation.md is already clean — nothing to resolve' se o TD nunca foi surfaced como issue."`. Skill terminates without further questions.
 - Otherwise (TD has a decided Option letter) → ask a follow-up question to classify the action:

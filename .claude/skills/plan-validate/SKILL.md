@@ -6,6 +6,8 @@ disable-model-invocation: true
 
 # Plan Pipeline — Stage 2: Validate
 
+> **Phase naming:** every `phase-NN-{slug}` / `phase-{NN}-{slug}` token in this file is the *normalized phase name* defined in `.claude/skills/plan-pipeline/SKILL.md` → "Phase name normalization": when the slug already starts with `phase-NN-`, do not prepend it again (slug `phase-03-videos` → `docs/phases/phase-03-videos/phase-03-videos.md`, never `phase-03-phase-03-videos`).
+
 Inspect context.md for coherence issues. Emit a fresh `validation.md` with per-section issue IDs and a `status: clean|dirty` verdict. Preserve the history of resolved issues across reruns.
 
 Read `plan-pipeline/SKILL.md` for shared conventions (mode detection, issue IDs, `sources_mtime`, staleness abort, frontmatter format, read strategy). This file references them without repeating.

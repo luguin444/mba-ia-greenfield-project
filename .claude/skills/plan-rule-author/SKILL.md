@@ -6,6 +6,8 @@ disable-model-invocation: true
 
 # Plan Rule Author
 
+> **Phase naming:** every `phase-NN-{slug}` / `phase-{NN}-{slug}` token in this file is the *normalized phase name* defined in `.claude/skills/plan-pipeline/SKILL.md` → "Phase name normalization": when the slug already starts with `phase-NN-`, do not prepend it again (slug `phase-03-videos` → `docs/phases/phase-03-videos/phase-03-videos.md`, never `phase-03-phase-03-videos`).
+
 Scaffolds a new rule file under `docs/rules/{plan-validate,plan-build,plan-resolve}/` following the canonical contract documented inline in this SKILL.md (frontmatter shape, 5 body responsibilities, per-dispatch emission destinations, suppressions policy). The skill walks the user through a hybrid-adaptive interview (atomic for cascading decisions, batched for correlated, auto for derivable) and produces a single MD file with frontmatter + the 5 canonical body sections.
 
 **Authority chain.** This SKILL.md is the canonical contract for new rules. Live rules in `docs/rules/plan-{validate,build,resolve}/*.md` are exemplars demonstrating tone, depth, and convention. When this SKILL.md and a live rule conflict, this SKILL.md wins; flag the inconsistency to the user.

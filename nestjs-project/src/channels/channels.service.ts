@@ -7,13 +7,19 @@ const PG_UNIQUE_VIOLATION = '23505';
 const NICKNAME_COLUMN = 'nickname';
 const MAX_RETRIES = 5;
 
+interface PgDriverErrorFields {
+  code?: unknown;
+  detail?: unknown;
+}
+
 function isPgUniqueViolationOnColumn(err: unknown, column: string): boolean {
   if (!(err instanceof QueryFailedError)) return false;
-  const e = err as any;
+  // QueryFailedError copies the pg driver error fields (code, detail) onto itself.
+  const { code, detail } = err as QueryFailedError & PgDriverErrorFields;
   return (
-    e.code === PG_UNIQUE_VIOLATION &&
-    typeof e.detail === 'string' &&
-    e.detail.includes(column)
+    code === PG_UNIQUE_VIOLATION &&
+    typeof detail === 'string' &&
+    detail.includes(column)
   );
 }
 

@@ -6,6 +6,8 @@ disable-model-invocation: true
 
 # Plan Pipeline — Stage 5: Test Specs
 
+> **Phase naming:** every `phase-NN-{slug}` / `phase-{NN}-{slug}` token in this file is the *normalized phase name* defined in `.claude/skills/plan-pipeline/SKILL.md` → "Phase name normalization": when the slug already starts with `phase-NN-`, do not prepend it again (slug `phase-03-videos` → `docs/phases/phase-03-videos/phase-03-videos.md`, never `phase-03-phase-03-videos`).
+
 This is **Stage 5** (optional, post-build) of the plan pipeline defined in `.claude/skills/plan-pipeline/SKILL.md`. Read that file first for the cross-stage convention (frontmatter format, registered values, stage interaction). Stage 1-4 produce/edit a phase or task plan; Stage 5 derives external **spec files** from screen-wiring / controller-wiring / cross-layer SIs of that plan.
 
 The skill is **skippable**: legacy plans (frontmatter without `test_specs_aware: true`) are routed to an abort message instructing migration; modern plans without any SI carrying `**Test Specs:**` (e.g., backend-pure phases) fall through silently.
@@ -151,11 +153,11 @@ Locate every SI block via `Grep -n '^### SI-' "$PLAN"`. For each SI block:
    | **DELETED** | Cenário com `Source: auto` cobrindo apenas ACs que sumiram do plano | Warning only (v1) |
    | **ORPHAN** | `Covers AC: #N` aponta a AC inexistente no SI | Warning only (v1) |
 
-   **Comparison mechanism (PRESERVED vs UPDATED).** The plan's `mtime` from `stat -c %Y` is an integer (Unix epoch seconds); each scenario's `Last sync` is an ISO-8601 string (e.g. `2026-05-02T14:30:00Z`). Both must be normalized to epoch integers before comparison:
+   **Comparison mechanism (PRESERVED vs UPDATED).** The plan's `mtime` from `date -r <file> +%s` is an integer (Unix epoch seconds); each scenario's `Last sync` is an ISO-8601 string (e.g. `2026-05-02T14:30:00Z`). Both must be normalized to epoch integers before comparison:
 
    ```bash
-   PLAN_MTIME=$(stat -c %Y "$PLAN")
-   LAST_SYNC_EPOCH=$(date -u -d "$LAST_SYNC_ISO" +%s)
+   PLAN_MTIME=$(date -r "$PLAN" +%s)
+   LAST_SYNC_EPOCH=$(node -e 'console.log(Math.floor(Date.parse(process.argv[1])/1000))' "$LAST_SYNC_ISO")
    if [ "$PLAN_MTIME" -le "$LAST_SYNC_EPOCH" ]; then echo PRESERVED; else echo UPDATED; fi
    ```
 
@@ -362,7 +364,7 @@ Reason: the project's frontend testing convention is *"one file per feature/flow
 | **DELETED** | Cenário com `Source: auto` cobrindo apenas ACs que sumiram do plano | warning no delta report |
 | **ORPHAN** | `Covers AC: #N` aponta a AC inexistente no SI atual | warning no delta report |
 
-**Crítico — PRESERVED e file mtime.** O preflight do `/implement` checa **file mtime** (`stat -c %Y`) vs plan mtime. Se PRESERVED skipasse silently, file mtime ficaria antigo e preflight falsamente abortaria STALE. Por isso PRESERVED **emite Edit** mesmo com conteúdo OK — o Edit naturalmente atualiza file mtime. Esta é a operação que torna a sequência canônica `/plan-build` (append) → `/plan-test-specs` → `/implement` funcional.
+**Crítico — PRESERVED e file mtime.** O preflight do `/implement` checa **file mtime** (`date -r <file> +%s`) vs plan mtime. Se PRESERVED skipasse silently, file mtime ficaria antigo e preflight falsamente abortaria STALE. Por isso PRESERVED **emite Edit** mesmo com conteúdo OK — o Edit naturalmente atualiza file mtime. Esta é a operação que torna a sequência canônica `/plan-build` (append) → `/plan-test-specs` → `/implement` funcional.
 
 **MANUAL state — content untouched, but frontmatter bump still fires when ALL scenarios are MANUAL.** A skill respeita o user-as-owner-of-cenário: NÃO modifica corpo de cenário MANUAL nem adiciona/altera cenários adjacentes. **Mas** se TODOS os cenários do spec estão em MANUAL (i.e., zero NEW + zero PRESERVED Edits content-bearing fired), o no-op frontmatter Edit do Stage 3 Step 5 dispara mesmo assim — só pra bumpar file mtime e satisfazer `/implement` preflight. Isso elimina o deadlock onde all-MANUAL specs causariam loop infinito. Quando o spec tem mix de states (e.g., 2 NEW + 3 MANUAL), os NEW Edits naturalmente bumpam mtime; o no-op Step 5 só fire quando o set de Edits está vazio.
 
