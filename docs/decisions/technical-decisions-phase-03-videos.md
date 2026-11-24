@@ -10,7 +10,7 @@ scope_description: "Phase 03 — video upload (up to 10GB, direct to object stor
 
 _Subprojects in scope:_
 
-- `nestjs-project/` — owns every server-side piece of this phase: the `videos` domain (draft pre-registration, upload orchestration, unique ID, status), the S3 client and presigned-URL issuance, the queue producer, and the video worker (FFmpeg/ffprobe), plus the Compose services it needs (object storage, queue broker, worker). TD-01 … TD-15.
+- `nestjs-project/` — owns every server-side piece of this phase: the `videos` domain (draft pre-registration, upload orchestration, unique ID, status), the S3 client and presigned-URL issuance, the queue producer, and the video worker (FFmpeg/ffprobe), plus the Compose services it needs (object storage, queue broker, worker). TD-01 … TD-16.
 - `next-frontend/` — no screen in Phase 03's bullets (upload/playback screens land in Phases 04/05; the leader handles the UI-detection false positive as "deferred" in plan-context). Its contracts are still fixed here, by the Cross-layer TDs it will later consume through the BFF: TD-05 (upload handshake, browser → storage PUTs), TD-09 (public video ID in URLs) and TD-10 (playback/download URL delivery). No Frontend-only TD.
 
 **Constraints carried in from the current code (weighed in every TD):**
@@ -62,26 +62,31 @@ _Subprojects in scope:_
 
 **Capability:** Transversal — covers: "Serviço de processamento em segundo plano (filas)", "Processamento automático do vídeo após upload (extração de duração e metadados)", "Geração automática de thumbnail a partir de um frame do vídeo"
 
-**Context:** The diagram has a separate "Video Worker (FFmpeg)" container. FFmpeg work is CPU/IO heavy and must not compete with HTTP handling ("sem impacto na performance"). The worker needs the `Video` entity, the TypeORM config, the S3 client and ffmpeg/ffprobe binaries. `Dockerfile.dev` has none of the binaries. Depends on TD-01.
+**Context:** The diagram has a separate "Video Worker (FFmpeg)" container. FFmpeg work is CPU/IO heavy and must not compete with HTTP handling ("sem impacto na performance"). The worker needs the `Video` entity, the TypeORM config, the S3 client and ffmpeg/ffprobe binaries. `Dockerfile.dev` has none of the binaries. Integration/e2e tests run today **inside `nestjs-api`** (`docker compose exec nestjs-api npm test` / `npm run test:e2e`, per `nestjs-project/CLAUDE.md` and the DoD), and the services share a bind-mounted `node_modules`. So *where ffmpeg lives* decides *where ffmpeg-dependent tests can run*, and this TD settles both. Depends on TD-01.
 
 **Options:**
 
-### Option A: Same Nest codebase, separate entrypoint and container
-- `nestjs-project` gains a second bootstrap (`NestFactory.createApplicationContext(WorkerModule)`, no HTTP listener) that registers the `@Processor`. Compose adds a `video-worker` service built from the same project, whose image installs `ffmpeg` (apt, bookworm 5.1.9). The API container stays as is.
-- **Pros:** Matches the diagram (separate container) and isolates CPU load from the API. Reuses entities, config namespaces (`registerAs`), Joi env validation and the S3 module, so nothing is duplicated. One `package.json`, one lint/test/tsc pipeline.
-- **Cons:** Two processes from one codebase need module boundaries (`WorkerModule` must not import HTTP-only modules). A second Compose service and a Dockerfile variant/stage with ffmpeg. Integration tests that run real ffprobe need ffmpeg wherever the tests execute (TD-14).
+### Option A: Same codebase, separate entrypoint/container, one shared dev image with ffmpeg
+- `nestjs-project` gains a second bootstrap (`NestFactory.createApplicationContext(WorkerModule)`, no HTTP listener) that registers the `@Processor`. `Dockerfile.dev` adds `ffmpeg` (apt, bookworm 5.1.9), and **both** `nestjs-api` and a new `video-worker` Compose service build from it, differing only by `command` (the worker service runs the worker entrypoint; `nestjs-api` keeps `tail -f /dev/null` + `exec`).
+- **Pros:** Matches the diagram and isolates worker CPU at the **process/container** level. Tests keep running in `nestjs-api` with real ffprobe/ffmpeg available, so **no DoD command changes**. Reuses entities, `registerAs` configs, Joi validation and the S3 module, all in one `package.json` and one lint/test/tsc pipeline. One image to build and cache.
+- **Cons:** The API dev image carries ffmpeg it does not use at runtime (≈ image size only). Image isolation is deferred: a lean, separate production image per process belongs to the deploy work (Phase 07). `WorkerModule` must not import HTTP-only modules.
 
-### Option B: Worker inside the API process
+### Option B: Same codebase, separate entrypoint/container, ffmpeg only in a worker image
+- Same as A, but the worker builds from its own Dockerfile/stage with ffmpeg, and `nestjs-api` stays ffmpeg-free.
+- **Pros:** Image-level isolation already in dev; the API image is unchanged.
+- **Cons:** ffmpeg-dependent integration tests can only run in the worker container, so the **DoD changes**: the full suite must run (also) via `docker compose exec video-worker npm test` (or the whole suite moves there), splitting the "full suite passes" gate across two containers. Two images to keep in sync for the same `node_modules`.
+
+### Option C: Worker inside the API process
 - Register the BullMQ processor in the API's `AppModule`. Same container, which then needs ffmpeg in `Dockerfile.dev`.
 - **Pros:** Simplest: no new service, no second bootstrap.
 - **Cons:** FFmpeg/ffprobe and S3 reads run in the API container and contend with request handling, which goes against "sem impacto na performance". API and worker cannot scale independently. Contradicts the diagram.
 
-### Option C: Separate subproject (`video-worker/`)
+### Option D: Separate subproject (`video-worker/`)
 - A new top-level subproject (Node or another language) with its own manifest, compose and tests, sharing only DB/queue/storage.
 - **Pros:** Strongest isolation, so a different language/runtime is possible.
 - **Cons:** Duplicates the `Video` entity/schema knowledge, config validation and S3 client in a second stack, which risks drift on the status contract. A new subproject means new lint/test/CI pipelines (monorepo tooling cost) for one job type.
 
-**Recommendation:** **Option A (same codebase, separate entrypoint + container)**. It gets the isolation the diagram and the 10GB requirement ask for while keeping one source of truth for the `Video` entity and status machine (TD-12). Option C pays a monorepo-tooling cost Phase 03 does not need, and Option B puts FFmpeg next to the HTTP server.
+**Recommendation:** **Option A (same codebase, separate `video-worker` container, one shared dev image with ffmpeg)**. Process-level isolation is what "sem impacto na performance" needs at runtime, and sharing the dev image keeps every test, including real ffprobe/ffmpeg integration and e2e, in `nestjs-api`. **DoD commands stay exactly as they are** (`docker compose exec nestjs-api npm test`, `… npm run test:e2e`, `… npx tsc --noEmit`, `… npm run lint`). What changes is the precondition: the image must be rebuilt once (`docker compose build`), and `minio` + `redis` must be up and ready before the suites (TD-14). B splits the DoD gate across two containers for an image-size gain that only matters in production, C puts FFmpeg next to the HTTP server, and D pays a monorepo-tooling cost Phase 03 does not need.
 
 **Decision:** _[pending]_
 
@@ -105,9 +110,9 @@ _Subprojects in scope:_
 ### Option B: npm-bundled static binaries (`ffmpeg-static` / `ffprobe-static`) + `execFile`
 - Binaries come from npm packages (downloaded at install), and the code is the same as A.
 - **Pros:** No Dockerfile change; versions pinned in `package-lock.json`.
-- **Cons:** `ffprobe-static@3.1.0` was last published in 2022 and `ffmpeg-static@5.3.0` downloads binaries at install time (network/arch fragility in containers). Large binaries go into `node_modules` of **both** API and worker (the bind-mounted `node_modules` is shared), which undermines TD-02's isolation.
+- **Cons:** `ffprobe-static@3.1.0` was last published in 2022 and `ffmpeg-static@5.3.0` downloads binaries at install time (network/arch fragility in containers). Large binaries go into the bind-mounted `node_modules` on the host and get reinstalled per architecture.
 
-**Recommendation:** **Option A (system ffmpeg via apt + `execFile` wrapper)**. The Debian package gives a reproducible, arch-independent ffmpeg/ffprobe confined to the worker image, and a thin `execFile` wrapper replaces the deprecated `fluent-ffmpeg` without adopting another wrapper. Thumbnail frame policy (e.g. a fixed fraction of duration, clamped to the first seconds for short clips) is a parameter of this TD, not a separate decision.
+**Recommendation:** **Option A (system ffmpeg via apt + `execFile` wrapper)**. The Debian package gives a reproducible, arch-independent ffmpeg/ffprobe in the shared dev image (TD-02 A), so the same binary serves the worker at runtime and the tests in `nestjs-api`, and a thin `execFile` wrapper replaces the deprecated `fluent-ffmpeg` without adopting another wrapper. Thumbnail frame policy (e.g. a fixed fraction of duration, clamped to the first seconds for short clips) is a parameter of this TD, not a separate decision.
 
 **Decision:** _[pending]_
 
@@ -216,7 +221,7 @@ _Subprojects in scope:_
 - **Pros:** Easy per-user usage accounting by prefix.
 - **Cons:** Leaks the owner ID into object URLs. Ownership changes would mean object moves. Same per-thumbnail signing cost as A.
 
-**Recommendation:** **Option B (private `videos` + public-read `thumbnails`, keys by `videoId`)**, with two S3 endpoints in config (`S3_ENDPOINT` internal = `http://<storage-service>:9000` for SDK calls, `S3_PUBLIC_ENDPOINT` for presigning). It keeps the 10GB originals private while giving listing pages stable thumbnail URLs, and it lets cost controls (incomplete-upload cleanup, future quotas) target only the bucket that grows. Phase 03 stores only the original + one thumbnail per video, so there are no derivative copies (see TD-11).
+**Recommendation:** **Option B (private `videos` + public-read `thumbnails`, keys by `videoId`)**, with two S3 endpoints in config: `S3_ENDPOINT` (internal, Compose service name, for SDK calls and the worker's own presigned reads in TD-04) and `S3_PUBLIC_ENDPOINT` (the host embedded in browser-facing presigned URLs and public thumbnail URLs). The value of `S3_PUBLIC_ENDPOINT`, which must be reachable from both the browser/host and the tests inside `nestjs-api`, is decided in TD-16. It keeps the 10GB originals private while giving listing pages stable thumbnail URLs, and it lets cost controls (incomplete-upload cleanup, future quotas) target only the bucket that grows. Phase 03 stores only the original + one thumbnail per video, so there are no derivative copies (see TD-11).
 
 **Decision:** _[pending]_
 
@@ -373,6 +378,13 @@ _Subprojects in scope:_
 
 **Recommendation:** **Option B (orthogonal `processingStatus` + publication, retries with backoff, idempotent worker, stale-upload/reconciliation sweep)**. Keeping the technical lifecycle separate from "rascunho" lets Phase 04 add publication/visibility without reshaping this machine. The sweep is what makes the non-transactional enqueue (TD-01 A) and abandoned 10GB multipart uploads safe, and the latter is a direct storage-cost control (Pontos de Atenção). MinIO's server-side stale-upload expiry (`api stale_uploads_expiry`, default 24h per MinIO docs) and S3's `AbortIncompleteMultipartUpload` lifecycle rule are backstops, not substitutes, because neither updates the DB row.
 
+**Sweep scheduling mechanism (part of Option B):**
+
+- **Chosen: BullMQ Job Scheduler, running in the worker process.** On worker bootstrap, the worker calls `queue.upsertJobScheduler('video-maintenance-sweep', { every: <ms> }, { name: 'sweep' })` on a dedicated `video-maintenance` queue, and a `@Processor('video-maintenance')` in `WorkerModule` executes it. `upsert` is idempotent by scheduler ID, so restarts or extra worker replicas re-declare the same scheduler instead of stacking duplicates, and each tick becomes one job processed by one worker. The interval and the stale threshold are env-configured (TD-06 pattern: e.g. `VIDEO_SWEEP_INTERVAL_MS`, `VIDEO_UPLOAD_STALE_AFTER_MS`). Tests invoke the processor directly instead of waiting for a tick. Library: `bullmq` (same dependency as TD-01; latest `6.7.10`, docs read at v6.5.3). In v6 the legacy repeatable-job API (`add(..., { repeat })`, `getRepeatableJobs`, `removeRepeatable*`) is **removed** in favour of Job Schedulers, so the scheduler API is the only supported path.
+- **Why the worker, not the API:** the sweep calls `AbortMultipartUpload`/`ListParts` on storage and writes status. Keeping it beside the processing processor keeps the API request-path-only and puts all background mutations of `processingStatus` in one process.
+- **Considered alternative: `@nestjs/schedule` `@Cron`** (`@nestjs/schedule@12.0.4`, peers `@nestjs/core ^11||^12`). The cron is registered in-process at `onApplicationBootstrap` (Nest docs, `techniques/task-scheduling`), so every process that imports `ScheduleModule` runs its own timer, and multiple worker replicas would sweep concurrently unless a lock is added. It is also one more dependency for something the queue already provides. Rejected.
+- **Dependency:** valid if TD-01 = A. If TD-01 = B (pg-boss), this mechanism must be re-researched against pg-boss's own scheduling.
+
 **Decision:** _[pending]_
 
 ---
@@ -402,7 +414,7 @@ _Subprojects in scope:_
 - **Pros:** No throttler change.
 - **Cons:** Anonymous playback is still capped site-wide at ~10 views/min, so the capability fails under normal use.
 
-**Recommendation:** **Option A (`@SkipThrottle()` on video controllers)**, combined with TD-05/TD-10's design that keeps per-upload/per-view API calls O(1). Under the current shared-IP tracker, any IP-based limit on video routes is a site-wide limit, so B and C cap legitimate traffic. **Separate task (out of scope):** make the throttler track the real client (BFF forwards client IP, API trusts the proxy / custom `getTracker`). After that, a per-client `videos` policy (B) becomes meaningful.
+**Recommendation:** **Option A (`@SkipThrottle()` on video controllers)**, combined with TD-05/TD-10's design that keeps per-upload/per-view API calls O(1). Under the current shared-IP tracker, any IP-based limit on video routes is a site-wide limit, so B and C cap legitimate traffic. **Accepted residual risk:** with A, the authenticated `POST /videos/uploads` has no rate limit, so one account could open unlimited drafts + multipart uploads (DB rows and orphan parts). The mitigation accepted for this phase is a per-channel cap on videos in `processingStatus = uploading` (env-configured, domain error in the `{statusCode,error,message}` envelope when exceeded), plus TD-12's sweep, which fails and aborts stale uploads. **Separate task (out of scope):** make the throttler track the real client (BFF forwards client IP, API trusts the proxy / custom `getTracker`). After that, a per-client `videos` policy (B) becomes meaningful.
 
 **Decision:** _[pending]_
 
@@ -414,26 +426,26 @@ _Subprojects in scope:_
 
 **Capability:** Transversal — covers: "Serviço de armazenamento de arquivos (vídeos e thumbnails)", "Serviço de processamento em segundo plano (filas)", "Upload de vídeos com suporte a arquivos de até 10GB sem impacto na performance", "Processamento automático do vídeo após upload (extração de duração e metadados)", "Geração automática de thumbnail a partir de um frame do vídeo"
 
-**Context:** The project's convention (`nestjs-project/CLAUDE.md`) is that integration/e2e tests use **real** infrastructure from the same Compose stack (shared Postgres, `--runInBand`) and never mock the DB. Phase 03 adds storage, queue and worker, and the brief asks for them to be real in integration/e2e. Integration tests that run real ffprobe need ffmpeg in the container where Jest runs (today `nestjs-api`, which has no ffmpeg; TD-02/TD-03). Test videos must exist without committing large binaries.
+**Context:** The project's convention (`nestjs-project/CLAUDE.md`) is that integration/e2e tests use **real** infrastructure from the same Compose stack (shared Postgres, `--runInBand`) and never mock the DB. Phase 03 adds storage, queue and worker, and the brief asks for them to be real in integration/e2e. Tests run inside `nestjs-api`, which gets ffmpeg through the shared dev image (TD-02 A). Presigned URLs used by tests must be reachable from inside that container with a valid signature (TD-16). Test videos must exist without committing large binaries. Per `nestjs-project/CLAUDE.md`, "starting the environment" starts only infrastructure, never the app, so e2e should not depend on a long-running worker container being up.
 
 **Options:**
 
-### Option A: Real MinIO + Redis services in the existing Compose; test-scoped buckets/queue; generated fixtures
-- Tests talk to the Compose `minio`/`redis` services (service names, per CLAUDE.md) with dedicated test buckets and a test queue prefix, cleaned per suite. Fixtures are generated at setup with `ffmpeg -f lavfi -i testsrc…` (seconds-long MP4) plus random bytes for the "not a video" case. "10GB" is proven through TD-06 config (tiny max, 5 MiB parts, 2–3 part uploads). Processor integration tests call the processor class against real MinIO + ffprobe. e2e drives the HTTP flow and waits for the real worker container to reach `ready`.
-- **Pros:** Same pattern as the existing DB tests, so no new tooling. Exercises the real S3 multipart/CORS-free server path and real ffprobe. Tiny generated fixtures keep the repo light.
-- **Cons:** ffmpeg must also be present in the test-running container (or tests run in the worker container). e2e with an async worker needs a polling helper with a timeout. Shared services keep `--runInBand`.
+### Option A: Real MinIO + Redis services in the existing Compose; test-scoped buckets/queue; generated fixtures; worker booted in-process
+- Tests talk to the Compose `minio`/`redis` services with dedicated test buckets and a test queue prefix, cleaned per suite. Fixtures are generated at setup with `ffmpeg -f lavfi -i testsrc…` (seconds-long MP4) plus random bytes for the "not a video" case. "10GB" is proven through TD-06 config (tiny max, 5 MiB parts, 2–3 part uploads). Integration tests call the processor class against real MinIO + ffprobe. e2e boots the HTTP app **and** `WorkerModule` (`createApplicationContext`) in the same Jest process, PUTs parts to the presigned URLs (TD-16), completes, and polls until `ready`.
+- **Pros:** Same pattern as the existing DB tests, so no new tooling. Exercises real S3 multipart, presigned signatures and real ffprobe. **DoD commands unchanged** (everything runs in `nestjs-api`). No dependency on the `video-worker` container being started. Tiny generated fixtures keep the repo light.
+- **Cons:** e2e with an async processor needs a polling helper with a timeout. Shared services keep `--runInBand`. `nestjs-project/CLAUDE.md` startup verification must gain MinIO/Redis readiness probes (doc change at implementation time).
 
 ### Option B: Testcontainers (ephemeral MinIO/Redis per suite)
 - Each suite starts its own containers from the test process.
 - **Pros:** Full isolation; parallel-safe.
-- **Cons:** Tests run **inside** the `nestjs-api` container, so Testcontainers would need the Docker socket mounted (Docker-in-Docker). Diverges from the established shared-Compose pattern.
+- **Cons:** Tests run **inside** the `nestjs-api` container, so Testcontainers would need the Docker socket mounted (Docker-in-Docker). Diverges from the established shared-Compose pattern. Random container ports would also break the fixed-host/port presigning contract (TD-16).
 
 ### Option C: Mocked S3/queue in integration tests (e.g. `aws-sdk-client-mock`), real only in e2e
 - Integration tests stub the SDK and queue, and only e2e touches real services.
 - **Pros:** Fast, no extra services for most tests.
 - **Cons:** Mocks cannot catch the failures that matter here (part-size minimums, ETag/ordering on complete, presign host mismatch, ffprobe parsing of real output). Contradicts the brief's "fila, worker e storage reais" and the project's no-mock integration convention.
 
-**Recommendation:** **Option A (real MinIO + Redis in Compose, test-scoped buckets/queue, ffmpeg-generated fixtures, limits shrunk via TD-06)**. It extends the existing shared-Compose test model instead of introducing Docker-in-Docker, and it is the only option that exercises the S3/FFmpeg behaviours most likely to break.
+**Recommendation:** **Option A (real MinIO + Redis in Compose, test-scoped buckets/queue, ffmpeg-generated fixtures, limits shrunk via TD-06, `WorkerModule` booted in-process for e2e)**. It extends the existing shared-Compose test model instead of introducing Docker-in-Docker, it is the only option that exercises the S3/FFmpeg behaviours most likely to break, and it keeps every DoD command running unchanged in `nestjs-api`.
 
 **Decision:** _[pending]_
 
@@ -465,12 +477,50 @@ _Subprojects in scope:_
 
 ---
 
+## TD-16: Presigned URL Host Reachability (browser/host ↔ Compose network)
+
+**Scope:** Repo-wide
+
+**Capability:** Transversal — covers: "Upload de vídeos com suporte a arquivos de até 10GB sem impacto na performance", "Reprodução via streaming (sem necessidade de download completo)", "Download do vídeo pelo usuário"
+
+**Context:** SigV4 signs the `host` (including port) into presigned URLs (TD-05 part PUTs, TD-10 Range GETs), so a URL works only when sent to the exact host:port it was signed for. Two kinds of client consume these URLs. (1) The browser, and host tools such as curl and the host-side Playwright of future phases, which reach MinIO through the **published** port. (2) Tests inside `nestjs-api` (TD-14), which reach MinIO through the **Compose network**. The root `CLAUDE.md` rule says "always use the Docker Compose service name as the host — never `localhost`". `minio:9000` does not resolve on the host, and `localhost:9000` inside a container is the container itself.
+
+Evidence from a throwaway stack (2026-11-24): MinIO (`cgr.dev/chainguard/minio`) with network alias `minio.localhost`, listening and published on the same port.
+- A URL presigned **inside** a `node:25.6.0-slim` container with `@aws-sdk/client-s3` + `s3-request-presigner` (`endpoint: http://minio.localhost:<port>`, `forcePathStyle`): in-container `dns.lookup('minio.localhost')` returns the MinIO container IP (`172.20.0.2`, through Docker DNS, not loopback; base image `hosts: files dns`), and Range GET returns **206**.
+- The **same URL** from the macOS host: curl Range GET returns **206**, and a presigned PUT returns **200**. Host Node `dns.lookup` returns `::1`.
+- The same signature with the host rewritten to `localhost`: **403**. This confirms the host binding.
+
+**Options:**
+
+### Option A: One hostname valid on both sides: `S3_PUBLIC_ENDPOINT=http://minio.localhost:9000`
+- The storage service gets the Compose network alias `minio.localhost` and publishes `9000:9000` (same port inside and out). Containers resolve the alias through Docker DNS to the storage container. Browsers resolve `*.localhost` to loopback by built-in rule (RFC 6761 §6.3; Chrome since ~2017, Firefox later), and curl ≥ 7.78 hard-codes it, so the host hits the published port. One value works in dev, in tests and in the browser.
+- **Pros:** One signed URL is valid everywhere, which was verified end to end above (container 206, host 206/200). No per-environment override and no host-machine setup. Tests exercise exactly the URL shape the browser will get.
+- **Cons:** Needs a written **exception** to the "never `localhost`" rule (see below). Relies on `*.localhost` → loopback on the host side: browsers and curl do it, but WebKit historically lagged, and non-browser tools on some Linux hosts depend on the resolver (systemd-resolved does it, plain `/etc/hosts` setups may not). Requires the storage port to be identical inside and outside.
+
+### Option B: Per-environment value: `http://localhost:9000` for dev/browser, `http://minio:9000` for tests
+- The default env value targets the browser. The test bootstrap overrides `S3_PUBLIC_ENDPOINT` to the service name before the app boots.
+- **Pros:** No new hostname; each value follows existing conventions (tests use the service name).
+- **Cons:** The dev value *is* `localhost` (the same rule exception, just in the browser-facing key). Tests never sign the URL shape the browser receives, so a host/port mismatch in the browser path goes untested. Future host-side Playwright (frontend phases) cannot use URLs signed with `minio:9000`.
+
+### Option C: Service name everywhere + host `/etc/hosts` entry (`127.0.0.1 minio`)
+- `S3_PUBLIC_ENDPOINT=http://minio:9000` everywhere, and each developer machine maps `minio` to loopback.
+- **Pros:** Fully compliant with the "service name" rule; one value.
+- **Cons:** Manual, privileged (`sudo`) setup on every host/CI runner, invisible to the repo. Breaks silently for anyone who skips it.
+
+**Recommendation:** **Option A (`minio.localhost` network alias + same published port)**. It is the only option with one signed URL that is verifiably valid from both the browser/host and the `nestjs-api` tests, with no per-environment override and no host setup. `S3_ENDPOINT` (internal SDK calls, worker reads) keeps the plain service name.
+
+**Exception to root `CLAUDE.md` "Docker Networking" (to be recorded there at implementation time):** `S3_PUBLIC_ENDPOINT` is the one key allowed a `*.localhost` host. Inside containers it is a **Compose network alias of the storage service**, resolved by Docker DNS to that service, never to the container's own loopback, so the rule's intent (never point a container at itself) holds. It exists only because presigned URLs must be signed for a host that is also valid in the browser. Every other host key (DB, Redis, `S3_ENDPOINT`) keeps the service name.
+
+**Decision:** _[pending]_
+
+---
+
 ## Decisions Summary
 
 | ID | Scope | Decision | Recommendation | Choice |
 |----|-------|----------|---------------|--------|
 | TD-01 | Backend | Message queue technology | A — BullMQ + Redis (`@nestjs/bullmq`) | _[pending]_ |
-| TD-02 | Repo-wide | Video worker runtime & container topology | A — same codebase, separate entrypoint + container with ffmpeg | _[pending]_ |
+| TD-02 | Repo-wide | Video worker runtime, container topology & ffmpeg placement | A — same codebase, separate `video-worker` container, one shared dev image with ffmpeg (DoD commands unchanged) | _[pending]_ |
 | TD-03 | Backend | Metadata & thumbnail tooling | A — apt ffmpeg/ffprobe + typed `execFile` wrapper | _[pending]_ |
 | TD-04 | Backend | Worker access to the source video | A — FFmpeg reads presigned GET via HTTP Range | _[pending]_ |
 | TD-05 | Cross-layer | Upload protocol (10GB, not via API) | A — S3 multipart, presigned parts, API-orchestrated | _[pending]_ |
@@ -480,10 +530,11 @@ _Subprojects in scope:_
 | TD-09 | Cross-layer | Unique video URL identifier | B — random 11-char base64url `publicId`, UNIQUE | _[pending]_ |
 | TD-10 | Cross-layer | Playback (Range/206) & download path | A — presigned GET direct from storage, issued by `@Public` API via BFF | _[pending]_ |
 | TD-11 | Backend | Playback format | A — serve original (progressive Range) | _[pending]_ |
-| TD-12 | Backend | Status lifecycle & failure handling | B — orthogonal processing/publication + retries + sweep | _[pending]_ |
-| TD-13 | Backend | Rate-limit policy for video endpoints | A — `@SkipThrottle()` on video controllers (+ separate tracker task) | _[pending]_ |
-| TD-14 | Repo-wide | Test infra for storage/queue/worker | A — real MinIO + Redis in Compose, generated fixtures | _[pending]_ |
+| TD-12 | Backend | Status lifecycle & failure handling | B — orthogonal processing/publication + retries + sweep (BullMQ Job Scheduler in the worker) | _[pending]_ |
+| TD-13 | Backend | Rate-limit policy for video endpoints | A — `@SkipThrottle()` on video controllers + per-channel active-upload cap (+ separate tracker task) | _[pending]_ |
+| TD-14 | Repo-wide | Test infra for storage/queue/worker | A — real MinIO + Redis in Compose, generated fixtures, worker in-process for e2e | _[pending]_ |
 | TD-15 | Backend | Video ownership anchor | A — `Video.channelId` | _[pending]_ |
+| TD-16 | Repo-wide | Presigned URL host reachability | A — `minio.localhost` network alias + same published port (documented CLAUDE.md exception) | _[pending]_ |
 
 ## Out-of-scope notes (separate tasks, not TDs here)
 
@@ -498,7 +549,9 @@ Versions checked on 2026-11-24 (installed via `package-lock.json`, latest via `n
 - Installed: `@nestjs/core 11.1.16`, `@nestjs/throttler 6.5.0`, `typeorm 0.3.28`, `joi 18.1.2`. Candidates: `@nestjs/bullmq 12.0.2` (peers `@nestjs/core ^10||^11||^12`, `bullmq ^3–^6`), `bullmq 6.7.10` (docs read at v6.5.3), `@aws-sdk/client-s3 3.1177.0`, `pg-boss 12.39.0` (`node >=22.12`), `nanoid 6.0.2` (`type: module`), `fluent-ffmpeg 2.1.3` (deprecated), `ffmpeg-static 5.3.0`, `ffprobe-static 3.1.0` (2022).
 - Runtime facts: `node:25.6.0-slim` = Debian 12 bookworm, apt `ffmpeg 7:5.1.9-0+deb12u1`. `redis:8-alpine` = Redis 8.12.0. `cgr.dev/chainguard/minio:latest` = `RELEASE.2026-11-23T00-10-37Z`. Official MinIO images unresolvable (see TD-08).
 - NestJS queues & standalone app: context7 `/nestjs/docs.nestjs.com` v11 — `techniques/queues.md`, `application-context.md`.
-- BullMQ: context7 `/taskforcesh/bullmq` v6.5.3 — retrying-failing-jobs, job-ids, throttle-jobs pattern, going-to-production (`maxmemory-policy noeviction`).
+- BullMQ: context7 `/taskforcesh/bullmq` v6.5.3 — retrying-failing-jobs, job-ids, throttle-jobs pattern, going-to-production (`maxmemory-policy noeviction`), job-schedulers (`upsertJobScheduler`, `every`/`pattern`), migrate-from-v5-to-v6 (repeatable-job APIs removed in v6). `bullmq@6.0.0` published 2026-07-30.
+- `@nestjs/schedule@12.0.4` (peers `@nestjs/core ^11||^12`): context7 `/nestjs/docs.nestjs.com` v11 `techniques/task-scheduling` (in-process registration at `onApplicationBootstrap`).
+- TD-16 hostname: hands-on test described in TD-16 (throwaway network, removed afterwards). Compose network aliases: https://docs.docker.com/reference/compose-file/services/#aliases · Compose networking/service discovery: https://docs.docker.com/compose/how-tos/networking · `*.localhost` → loopback: RFC 6761 §6.3 https://datatracker.ietf.org/doc/html/rfc6761#section-6.3 · https://daniel.haxx.se/blog/2021/05/31/ (curl 7.78) · https://bugzilla.mozilla.org/show_bug.cgi?id=1220810 (Firefox) · https://bugs.webkit.org/show_bug.cgi?id=160504 (WebKit) · https://learn.microsoft.com/aspnet/core/test/localhost-tld
 - pg-boss: context7 `/timgit/pg-boss` 12.38.2 — adapters (`send(..., { db })` transactional enqueue).
 - @nestjs/throttler: context7 `/nestjs/throttler` v6.7.1 README — named throttlers, `@SkipThrottle` semantics, `getTracker` behind proxy.
 - AWS SDK v3: context7 `/aws/aws-sdk-js-v3` — `lib-storage/Upload.ts` (ETag + CORS, part ordering), `s3-request-presigner` (`UNSIGNED-PAYLOAD`, default `expiresIn` 900), `GetObjectCommand` (`ResponseContentDisposition` requires a signed request), `forcePathStyle`.
