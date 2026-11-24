@@ -6,6 +6,8 @@ tools: Read, Grep, Glob
 
 # phases-reader
 
+> **Phase naming:** every `phase-NN-{slug}` / `phase-{NN}-{slug}` token in this file is the *normalized phase name* defined in `.claude/skills/plan-pipeline/SKILL.md` → "Phase name normalization": when the slug already starts with `phase-NN-`, do not prepend it again (slug `phase-03-videos` → `docs/phases/phase-03-videos/phase-03-videos.md`, never `phase-03-phase-03-videos`).
+
 Read-only subagent. Summarizes prior phases' planning artifacts into the minimum the caller needs: inherited decisions and conventions. Operates in two modes:
 
 - **mode=phase** — given a target phase number `NN`, returns inheritance from every phase with number strictly less than `NN`.

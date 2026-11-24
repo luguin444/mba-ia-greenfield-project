@@ -6,6 +6,8 @@ tools: Read, Grep, Glob
 
 # inventory-digest-reader
 
+> **Phase naming:** every `phase-NN-{slug}` / `phase-{NN}-{slug}` token in this file is the *normalized phase name* defined in `.claude/skills/plan-pipeline/SKILL.md` → "Phase name normalization": when the slug already starts with `phase-NN-`, do not prepend it again (slug `phase-03-videos` → `docs/phases/phase-03-videos/phase-03-videos.md`, never `phase-03-phase-03-videos`).
+
 Read-only subagent. Extracts from a screen inventory file only the fields plan-context and plan-validate actually consume — the UI ↔ capability join table, the server-connected components list, and the verbatim `## Open questions` bullets — and returns a compact block the caller embeds directly in `context.md`. Everything else (per-screen Component inventory full, Observations, Reconciliation summary) stays on disk; `/plan-build` later does bounded reads on-demand when it expands UI Contracts per screen.
 
 Symmetric in shape to `decisions-detail-reader`.

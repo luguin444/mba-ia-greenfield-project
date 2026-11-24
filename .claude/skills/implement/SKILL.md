@@ -6,6 +6,8 @@ disable-model-invocation: true
 
 # Implement
 
+> **Phase naming:** every `phase-NN-{slug}` / `phase-{NN}-{slug}` token in this file is the *normalized phase name* defined in `.claude/skills/plan-pipeline/SKILL.md` → "Phase name normalization": when the slug already starts with `phase-NN-`, do not prepend it again (slug `phase-03-videos` → `docs/phases/phase-03-videos/phase-03-videos.md`, never `phase-03-phase-03-videos`).
+
 Execute a plan (phase or task) SI by SI. Each SI is only considered done when its implementation exists **and**, if the SI has a Tests section, the tests listed there pass. Move to the next SI only after the current one is complete (tests passing where the SI has a Tests section).
 
 This skill is the execution counterpart of `plan-pipeline`. The plan document is the contract — this skill does not make technical decisions, it follows them.
@@ -132,7 +134,7 @@ Check these before starting implementation. Stop and surface any issue to the us
   - spec STALE > 10 min → **warn + pergunta ao usuário** (spec pode estar desatualizado; usuário decide se quer prosseguir ou re-rodar /plan-test-specs)
 
   ```bash
-  PLAN_MTIME=$(stat -c %Y "$PLAN")
+  PLAN_MTIME=$(date -r "$PLAN" +%s)
   GRACE_SECONDS=600  # 10-minute grace window — covers plans re-generated shortly after /plan-test-specs
 
   # (a) Hard abort se ainda há _pending placeholders (significa que /plan-test-specs nunca rodou)
@@ -144,7 +146,7 @@ Check these before starting implementation. Stop and surface any issue to the us
     echo "$line" | grep -oE '`[^`]+`' | tr -d '`' | while IFS= read -r SPEC_PATH; do
       [ ! -f "$SPEC_PATH" ] && echo "MISSING: $SPEC_PATH"
       if [ -f "$SPEC_PATH" ]; then
-        SPEC_MTIME=$(stat -c %Y "$SPEC_PATH")
+        SPEC_MTIME=$(date -r "$SPEC_PATH" +%s)
         AGE_DIFF=$(( PLAN_MTIME - SPEC_MTIME ))
         [ "$AGE_DIFF" -gt "$GRACE_SECONDS" ] && echo "STALE: $SPEC_PATH (${AGE_DIFF}s older than plan)"
       fi

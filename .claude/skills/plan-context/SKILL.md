@@ -6,6 +6,8 @@ disable-model-invocation: true
 
 # Plan Pipeline — Stage 1: Context
 
+> **Phase naming:** every `phase-NN-{slug}` / `phase-{NN}-{slug}` token in this file is the *normalized phase name* defined in `.claude/skills/plan-pipeline/SKILL.md` → "Phase name normalization": when the slug already starts with `phase-NN-`, do not prepend it again (slug `phase-03-videos` → `docs/phases/phase-03-videos/phase-03-videos.md`, never `phase-03-phase-03-videos`).
+
 Consolidate the planning inputs into a lean, indexed `context.md`. This stage is a **pure consolidator** — it reads sources via subagents, produces a short structured artifact, and nothing else. It does not detect inconsistencies (that is `plan-validate`'s job), does not ask the user questions beyond slug confirmation and correlated-decisions confirmation, does not edit decisions docs.
 
 Read `plan-pipeline/SKILL.md` for shared conventions (mode detection, slug discovery, `sources_mtime`, abort-with-command protocol, subagent dispatch, frontmatter format, read strategy rules). This file references those conventions by name without repeating them.
@@ -226,7 +228,7 @@ If no testing guide exists for a subproject in scope, note it in the context.md 
 
 ### Step 6 — Record `sources_mtime`
 
-For every file contributing to context.md, run `stat -c '%y' <file>` (or equivalent) to capture ISO-8601 mtimes. Sources include:
+For every file contributing to context.md, run `date -r <file> +%Y-%m-%dT%H:%M:%S%z` (or equivalent) to capture ISO-8601 mtimes. Sources include:
 
 **Phase mode:**
 - `docs/project-plan.md`.
