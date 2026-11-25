@@ -1,7 +1,7 @@
 ---
 scope_type: phase
 related_phases: [3]
-status: pending
+status: decided
 date: 2026-11-24
 scope_description: "Phase 03 — video upload (up to 10GB, direct to object storage), background processing (queue + FFmpeg worker extracting duration/metadata and a thumbnail), unique short video URL, streaming playback (HTTP Range/206) and download. Covers the queue technology, worker runtime, upload protocol, storage layout/provisioning, delivery path, status lifecycle, rate-limit interaction and test infrastructure."
 ---
@@ -52,7 +52,8 @@ _Subprojects in scope:_
 
 **Recommendation:** **Option A (BullMQ + Redis)**. It is the only option where retries, exponential backoff, `jobId` dedup and failed-job inspection come from the official Nest integration without custom plumbing, and it matches the diagram's separate queue container. The real cost is the non-transactional enqueue: it is covered by an idempotent `jobId = videoId` plus a periodic reconciliation (TD-12). pg-boss (B) is the honest runner-up if the team prefers zero new infrastructure and transactional enqueue over Nest-native ergonomics.
 
-**Decision:** _[pending]_
+**Decision:** A (BullMQ + Redis via @nestjs/bullmq)
+**Libraries:** bullmq, @nestjs/bullmq
 
 ---
 
@@ -88,7 +89,7 @@ _Subprojects in scope:_
 
 **Recommendation:** **Option A (same codebase, separate `video-worker` container, one shared dev image with ffmpeg)**. Process-level isolation is what "sem impacto na performance" needs at runtime, and sharing the dev image keeps every test, including real ffprobe/ffmpeg integration and e2e, in `nestjs-api`. **DoD commands stay exactly as they are** (`docker compose exec nestjs-api npm test`, `… npm run test:e2e`, `… npx tsc --noEmit`, `… npm run lint`). What changes is the precondition: the image must be rebuilt once (`docker compose build`), and `minio` + `redis` must be up and ready before the suites (TD-14). B splits the DoD gate across two containers for an image-size gain that only matters in production, C puts FFmpeg next to the HTTP server, and D pays a monorepo-tooling cost Phase 03 does not need.
 
-**Decision:** _[pending]_
+**Decision:** A (same codebase, separate video-worker container, one shared dev image with ffmpeg)
 
 ---
 
@@ -114,7 +115,7 @@ _Subprojects in scope:_
 
 **Recommendation:** **Option A (system ffmpeg via apt + `execFile` wrapper)**. The Debian package gives a reproducible, arch-independent ffmpeg/ffprobe in the shared dev image (TD-02 A), so the same binary serves the worker at runtime and the tests in `nestjs-api`, and a thin `execFile` wrapper replaces the deprecated `fluent-ffmpeg` without adopting another wrapper. Thumbnail frame policy (e.g. a fixed fraction of duration, clamped to the first seconds for short clips) is a parameter of this TD, not a separate decision.
 
-**Decision:** _[pending]_
+**Decision:** A (apt ffmpeg/ffprobe + typed execFile wrapper)
 
 ---
 
@@ -140,7 +141,8 @@ _Subprojects in scope:_
 
 **Recommendation:** **Option A (presigned GET + FFmpeg HTTP Range reads)**. The phase needs only metadata and one frame, so streaming the whole 10GB through the worker's disk is the dominant cost Option B adds for no product gain. Option B stays a valid fallback for a future transcoding phase, where the full read is unavoidable.
 
-**Decision:** _[pending]_
+**Decision:** A (FFmpeg reads a short-lived presigned GET via HTTP Range)
+**Libraries:** @aws-sdk/s3-request-presigner
 
 ---
 
@@ -166,7 +168,8 @@ _Subprojects in scope:_
 
 **Recommendation:** **Option A (S3 multipart with presigned part URLs, API-orchestrated)**. It is the only option where no service other than the object store touches video bytes, and resumability comes from `ListParts`. The draft-on-initiate and enqueue-on-complete hooks are plain API endpoints that follow the existing JWT/envelope conventions. tus (B) buys finer-grained resume at the price of an extra data-path service and a hook contract. Note on the strict-BFF rule: the browser talks to **storage** (presigned URLs), never to the Nest API, which is the carve-out `next-frontend-config-base/TD-03` already anticipated.
 
-**Decision:** _[pending]_
+**Decision:** A (S3 multipart with presigned part URLs, API-orchestrated)
+**Libraries:** @aws-sdk/client-s3, @aws-sdk/s3-request-presigner
 
 ---
 
@@ -192,7 +195,7 @@ _Subprojects in scope:_
 
 **Recommendation:** **Option A (env-configured, server-dictated part size)**. It follows the Phase 01 config convention and is the mechanism that makes "10GB" testable without 10GB: the same code path runs with a 12 MiB ceiling and 5 MiB parts in tests.
 
-**Decision:** _[pending]_
+**Decision:** A (env-configured limits, server-dictated part size)
 
 ---
 
@@ -223,7 +226,8 @@ _Subprojects in scope:_
 
 **Recommendation:** **Option B (private `videos` + public-read `thumbnails`, keys by `videoId`)**, with two S3 endpoints in config: `S3_ENDPOINT` (internal, Compose service name, for SDK calls and the worker's own presigned reads in TD-04) and `S3_PUBLIC_ENDPOINT` (the host embedded in browser-facing presigned URLs and public thumbnail URLs). The value of `S3_PUBLIC_ENDPOINT`, which must be reachable from both the browser/host and the tests inside `nestjs-api`, is decided in TD-16. It keeps the 10GB originals private while giving listing pages stable thumbnail URLs, and it lets cost controls (incomplete-upload cleanup, future quotas) target only the bucket that grows. Phase 03 stores only the original + one thumbnail per video, so there are no derivative copies (see TD-11).
 
-**Decision:** _[pending]_
+**Decision:** B (private videos + public-read thumbnails, keys by videoId, internal/public endpoints)
+**Libraries:** @aws-sdk/client-s3, @aws-sdk/s3-request-presigner
 
 ---
 
@@ -254,7 +258,7 @@ _Subprojects in scope:_
 
 **Recommendation:** **Option A (Chainguard MinIO, digest-pinned)**. It is the only option verified to run today that keeps the documented MinIO target, with no build tooling. The application code talks plain S3 (`@aws-sdk/client-s3`, `forcePathStyle`), so moving to B, C or real S3 later is a compose change, not a code change.
 
-**Decision:** _[pending]_
+**Decision:** A (Chainguard MinIO, digest-pinned)
 
 ---
 
@@ -285,7 +289,7 @@ _Subprojects in scope:_
 
 **Recommendation:** **Option B (random 11-char base64url `publicId` with UNIQUE constraint)**. It is the only option that is short **and** unguessable, both of which are required (short by the attention point, unguessable by Phase 05 unlisted). The "never conflicts" guarantee comes from the DB constraint, not from probability alone.
 
-**Decision:** _[pending]_
+**Decision:** B (random 11-char base64url publicId, UNIQUE)
 
 ---
 
@@ -316,7 +320,9 @@ _Subprojects in scope:_
 
 **Recommendation:** **Option A (presigned GET direct from storage, URL issued by a `@Public` API endpoint via the BFF)**. It is the only option where Range/206 traffic never touches the throttled, BFF-shared API path while drafts and unlisted videos stay private. It resolves the diagram/BFF tension cleanly: strict BFF governs the **API**, and media bytes come from storage via short-lived signed URLs. Which statuses may be played (e.g. only `ready`) is enforced by the issuing endpoint (TD-12).
 
-**Decision:** _[pending]_
+**Decision:** A (presigned GET direct from storage, issued by a @Public API endpoint via the BFF)
+**Libraries:** @aws-sdk/client-s3, @aws-sdk/s3-request-presigner
+**Note:** Phase 03 access rule (resolves validation AMB-1): the URL-issuing endpoint is `@Public` with optional auth. The owner (channel owner) gets playback/download URLs for their own videos once `processingStatus = ready`, even while the video is a draft; anyone else gets them only when the video is published. The publication gate is wired now and becomes effective when Phase 04 adds publishing. Drafts therefore stay private, as this Recommendation requires.
 
 ---
 
@@ -347,7 +353,7 @@ _Subprojects in scope:_
 
 **Recommendation:** **Option A (serve the original, progressive Range)** for Phase 03. It meets "reprodução sem download completo" with zero added CPU/storage, and the phase scope is metadata, not transcoding. What is lost: guaranteed fast-start and codec universality. Option B is the cheapest upgrade if fast-start becomes a product requirement, and C belongs to a dedicated future phase.
 
-**Decision:** _[pending]_
+**Decision:** A (serve the original, progressive Range)
 
 ---
 
@@ -385,7 +391,8 @@ _Subprojects in scope:_
 - **Considered alternative: `@nestjs/schedule` `@Cron`** (`@nestjs/schedule@12.0.4`, peers `@nestjs/core ^11||^12`). The cron is registered in-process at `onApplicationBootstrap` (Nest docs, `techniques/task-scheduling`), so every process that imports `ScheduleModule` runs its own timer, and multiple worker replicas would sweep concurrently unless a lock is added. It is also one more dependency for something the queue already provides. Rejected.
 - **Dependency:** valid if TD-01 = A. If TD-01 = B (pg-boss), this mechanism must be re-researched against pg-boss's own scheduling.
 
-**Decision:** _[pending]_
+**Decision:** B (orthogonal processingStatus + publication, retries, idempotent worker, sweep via BullMQ Job Scheduler)
+**Libraries:** bullmq, @nestjs/bullmq
 
 ---
 
@@ -416,7 +423,8 @@ _Subprojects in scope:_
 
 **Recommendation:** **Option A (`@SkipThrottle()` on video controllers)**, combined with TD-05/TD-10's design that keeps per-upload/per-view API calls O(1). Under the current shared-IP tracker, any IP-based limit on video routes is a site-wide limit, so B and C cap legitimate traffic. **Accepted residual risk:** with A, the authenticated `POST /videos/uploads` has no rate limit, so one account could open unlimited drafts + multipart uploads (DB rows and orphan parts). The mitigation accepted for this phase is a per-channel cap on videos in `processingStatus = uploading` (env-configured, domain error in the `{statusCode,error,message}` envelope when exceeded), plus TD-12's sweep, which fails and aborts stale uploads. **Separate task (out of scope):** make the throttler track the real client (BFF forwards client IP, API trusts the proxy / custom `getTracker`). After that, a per-client `videos` policy (B) becomes meaningful.
 
-**Decision:** _[pending]_
+**Decision:** A (@SkipThrottle() on video controllers + per-channel active-upload cap)
+**Libraries:** @nestjs/throttler
 
 ---
 
@@ -447,7 +455,7 @@ _Subprojects in scope:_
 
 **Recommendation:** **Option A (real MinIO + Redis in Compose, test-scoped buckets/queue, ffmpeg-generated fixtures, limits shrunk via TD-06, `WorkerModule` booted in-process for e2e)**. It extends the existing shared-Compose test model instead of introducing Docker-in-Docker, it is the only option that exercises the S3/FFmpeg behaviours most likely to break, and it keeps every DoD command running unchanged in `nestjs-api`.
 
-**Decision:** _[pending]_
+**Decision:** A (real MinIO + Redis in Compose, generated fixtures, worker in-process for e2e)
 
 ---
 
@@ -473,7 +481,7 @@ _Subprojects in scope:_
 
 **Recommendation:** **Option A (`channelId`)**. The product's ownership unit is the channel (panel, public page, watch page), and anchoring there keeps Phases 04–07 reads direct. The extra user→channel lookup happens only on writes.
 
-**Decision:** _[pending]_
+**Decision:** A (Video.channelId)
 
 ---
 
@@ -511,7 +519,7 @@ Evidence from a throwaway stack (2026-11-24): MinIO (`cgr.dev/chainguard/minio`)
 
 **Exception to root `CLAUDE.md` "Docker Networking" (to be recorded there at implementation time):** `S3_PUBLIC_ENDPOINT` is the one key allowed a `*.localhost` host. Inside containers it is a **Compose network alias of the storage service**, resolved by Docker DNS to that service, never to the container's own loopback, so the rule's intent (never point a container at itself) holds. It exists only because presigned URLs must be signed for a host that is also valid in the browser. Every other host key (DB, Redis, `S3_ENDPOINT`) keeps the service name.
 
-**Decision:** _[pending]_
+**Decision:** A (minio.localhost network alias + same published port)
 
 ---
 
@@ -519,22 +527,22 @@ Evidence from a throwaway stack (2026-11-24): MinIO (`cgr.dev/chainguard/minio`)
 
 | ID | Scope | Decision | Recommendation | Choice |
 |----|-------|----------|---------------|--------|
-| TD-01 | Backend | Message queue technology | A — BullMQ + Redis (`@nestjs/bullmq`) | _[pending]_ |
-| TD-02 | Repo-wide | Video worker runtime, container topology & ffmpeg placement | A — same codebase, separate `video-worker` container, one shared dev image with ffmpeg (DoD commands unchanged) | _[pending]_ |
-| TD-03 | Backend | Metadata & thumbnail tooling | A — apt ffmpeg/ffprobe + typed `execFile` wrapper | _[pending]_ |
-| TD-04 | Backend | Worker access to the source video | A — FFmpeg reads presigned GET via HTTP Range | _[pending]_ |
-| TD-05 | Cross-layer | Upload protocol (10GB, not via API) | A — S3 multipart, presigned parts, API-orchestrated | _[pending]_ |
-| TD-06 | Backend | Upload limits & part sizing | A — env-configured, server-dictated part size | _[pending]_ |
-| TD-07 | Backend | Storage layout: buckets, keys, presign endpoint | B — private `videos` + public-read `thumbnails`, keys by `videoId`, internal/public endpoints | _[pending]_ |
-| TD-08 | Repo-wide | Local MinIO provisioning | A — Chainguard MinIO, digest-pinned | _[pending]_ |
-| TD-09 | Cross-layer | Unique video URL identifier | B — random 11-char base64url `publicId`, UNIQUE | _[pending]_ |
-| TD-10 | Cross-layer | Playback (Range/206) & download path | A — presigned GET direct from storage, issued by `@Public` API via BFF | _[pending]_ |
-| TD-11 | Backend | Playback format | A — serve original (progressive Range) | _[pending]_ |
-| TD-12 | Backend | Status lifecycle & failure handling | B — orthogonal processing/publication + retries + sweep (BullMQ Job Scheduler in the worker) | _[pending]_ |
-| TD-13 | Backend | Rate-limit policy for video endpoints | A — `@SkipThrottle()` on video controllers + per-channel active-upload cap (+ separate tracker task) | _[pending]_ |
-| TD-14 | Repo-wide | Test infra for storage/queue/worker | A — real MinIO + Redis in Compose, generated fixtures, worker in-process for e2e | _[pending]_ |
-| TD-15 | Backend | Video ownership anchor | A — `Video.channelId` | _[pending]_ |
-| TD-16 | Repo-wide | Presigned URL host reachability | A — `minio.localhost` network alias + same published port (documented CLAUDE.md exception) | _[pending]_ |
+| TD-01 | Backend | Message queue technology | A — BullMQ + Redis (`@nestjs/bullmq`) | A |
+| TD-02 | Repo-wide | Video worker runtime, container topology & ffmpeg placement | A — same codebase, separate `video-worker` container, one shared dev image with ffmpeg (DoD commands unchanged) | A |
+| TD-03 | Backend | Metadata & thumbnail tooling | A — apt ffmpeg/ffprobe + typed `execFile` wrapper | A |
+| TD-04 | Backend | Worker access to the source video | A — FFmpeg reads presigned GET via HTTP Range | A |
+| TD-05 | Cross-layer | Upload protocol (10GB, not via API) | A — S3 multipart, presigned parts, API-orchestrated | A |
+| TD-06 | Backend | Upload limits & part sizing | A — env-configured, server-dictated part size | A |
+| TD-07 | Backend | Storage layout: buckets, keys, presign endpoint | B — private `videos` + public-read `thumbnails`, keys by `videoId`, internal/public endpoints | B |
+| TD-08 | Repo-wide | Local MinIO provisioning | A — Chainguard MinIO, digest-pinned | A |
+| TD-09 | Cross-layer | Unique video URL identifier | B — random 11-char base64url `publicId`, UNIQUE | B |
+| TD-10 | Cross-layer | Playback (Range/206) & download path | A — presigned GET direct from storage, issued by `@Public` API via BFF | A |
+| TD-11 | Backend | Playback format | A — serve original (progressive Range) | A |
+| TD-12 | Backend | Status lifecycle & failure handling | B — orthogonal processing/publication + retries + sweep (BullMQ Job Scheduler in the worker) | B |
+| TD-13 | Backend | Rate-limit policy for video endpoints | A — `@SkipThrottle()` on video controllers + per-channel active-upload cap (+ separate tracker task) | A |
+| TD-14 | Repo-wide | Test infra for storage/queue/worker | A — real MinIO + Redis in Compose, generated fixtures, worker in-process for e2e | A |
+| TD-15 | Backend | Video ownership anchor | A — `Video.channelId` | A |
+| TD-16 | Repo-wide | Presigned URL host reachability | A — `minio.localhost` network alias + same published port (documented CLAUDE.md exception) | A |
 
 ## Out-of-scope notes (separate tasks, not TDs here)
 
