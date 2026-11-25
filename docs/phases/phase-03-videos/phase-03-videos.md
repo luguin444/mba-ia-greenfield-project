@@ -746,7 +746,7 @@ Entity file: `src/videos/entities/video.entity.ts`, table `videos`.
 
 ---
 
-#### POST /videos/uploads (SI-NN.X)
+#### POST /videos/uploads (SI-03.8)
 
 Initiate upload: pre-registers the video as a draft and opens the multipart upload (per `phase-03-videos/TD-05`, `phase-03-videos/TD-06`, `phase-03-videos/TD-13`, `phase-03-videos/TD-15`).
 
@@ -784,7 +784,7 @@ Initiate upload: pre-registers the video as a draft and opens the multipart uplo
 
 ---
 
-#### POST /videos/:id/upload/part-urls (SI-NN.X)
+#### POST /videos/:id/upload/part-urls (SI-03.9)
 
 Signs the parts that are still missing. This is the resume path: `ListParts` tells which parts are already stored (per `phase-03-videos/TD-05`).
 
@@ -818,7 +818,7 @@ Signs the parts that are still missing. This is the resume path: `ListParts` tel
 
 ---
 
-#### POST /videos/:id/upload/complete (SI-NN.X)
+#### POST /videos/:id/upload/complete (SI-03.10)
 
 Finishes the multipart upload, verifies the size and enqueues processing (per `phase-03-videos/TD-05`, `phase-03-videos/TD-06`, `phase-03-videos/TD-01`, `phase-03-videos/TD-12`).
 
@@ -856,7 +856,7 @@ Finishes the multipart upload, verifies the size and enqueues processing (per `p
 
 ---
 
-#### DELETE /videos/:id/upload (SI-NN.X)
+#### DELETE /videos/:id/upload (SI-03.11)
 
 Aborts an in-progress upload (per `phase-03-videos/TD-05`, `phase-03-videos/TD-12`).
 
@@ -878,7 +878,7 @@ Aborts an in-progress upload (per `phase-03-videos/TD-05`, `phase-03-videos/TD-1
 
 ---
 
-#### GET /videos/:id (SI-NN.X)
+#### GET /videos/:id (SI-03.12)
 
 Owner-only detail and status, used to poll processing after `complete`.
 
@@ -897,7 +897,7 @@ Owner-only detail and status, used to poll processing after `complete`.
 
 ---
 
-#### GET /videos/:publicId/playback (SI-NN.X)
+#### GET /videos/:publicId/playback (SI-03.14)
 
 Issues a short-lived presigned GET for streaming. The browser's `<video>` then makes Range/206 requests straight to storage, serving the original file as uploaded (per `phase-03-videos/TD-10`, `phase-03-videos/TD-11`). `@OptionalAuth()` route (see Authorization Matrix).
 
@@ -922,7 +922,7 @@ Response header `Cache-Control: no-store`.
 
 ---
 
-#### GET /videos/:publicId/download (SI-NN.X)
+#### GET /videos/:publicId/download (SI-03.15)
 
 Same access rules and response shape as playback. The presigned GET carries `ResponseContentDisposition: attachment; filename="<ascii-sanitized original_filename>"; filename*=UTF-8''<RFC 5987-encoded original_filename>` (per `phase-03-videos/TD-10`, `library-refs.md` → `@aws-sdk/s3-request-presigner`). `@OptionalAuth()` route.
 
