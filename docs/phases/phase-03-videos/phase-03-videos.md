@@ -3,9 +3,9 @@ kind: phase
 name: phase-03-videos
 test_specs_aware: true
 sources_mtime:
-  docs/phases/phase-03-videos/context.md: "2026-11-24T21:11:18-0300"
-  docs/phases/phase-03-videos/library-refs.md: "2026-11-24T21:10:09-0300"
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-11-24T21:09:01-0300"
+  docs/phases/phase-03-videos/context.md: "2026-11-25T11:24:26-0300"
+  docs/phases/phase-03-videos/library-refs.md: "2026-11-25T11:57:44-0300"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-11-24T23:28:59-0300"
   docs/decisions/technical-decisions-openapi-docs-nestjs.md: "2026-10-28T19:33:34-0300"
 ---
 
@@ -25,7 +25,7 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 
 **Technical actions:**
 
-1. Instalar em `nestjs-project` (dentro do container): `bullmq@^6.7.10`, `ioredis@^6.1.0` (peer **opcional** do bullmq 6: o npm não instala sozinho e, sem ele, o BullMQ falha ao conectar), `@nestjs/bullmq@^12.0.2`, `@aws-sdk/client-s3@^3.1177.0`, `@aws-sdk/s3-request-presigner@^3.1177.0` (per `phase-03-videos/TD-01`, `phase-03-videos/TD-05`, `phase-03-videos/TD-07`; versões em `library-refs.md`).
+1. Instalar em `nestjs-project` (dentro do container): `bullmq@^6.7.10`, `ioredis@^6.1.0` (peer **opcional** do bullmq 6: o npm não instala sozinho e, sem ele, o BullMQ falha ao conectar), `@nestjs/bullmq@^11.0.5` (a v12 é ESM-only e não carrega no Jest CommonJS do projeto; ver `library-refs.md`), `@aws-sdk/client-s3@^3.1177.0`, `@aws-sdk/s3-request-presigner@^3.1177.0` (per `phase-03-videos/TD-01`, `phase-03-videos/TD-05`, `phase-03-videos/TD-07`; versões em `library-refs.md`).
 2. Criar `src/config/queue.config.ts` (`registerAs('queue')`: `host`, `port`, `prefix`), `src/config/storage.config.ts` (`registerAs('storage')`: `endpoint`, `publicEndpoint`, `region`, `accessKey`, `secretKey`, `videosBucket`, `thumbnailsBucket`) e `src/config/video.config.ts` (`registerAs('video')`: as 7 chaves `VIDEO_*`), conforme `### Configuration & Infrastructure` (inherited `phase-01-configuracao-base/TD-03`; per `phase-03-videos/TD-06`).
 3. Estender `src/config/env.validation.ts` com as 17 chaves novas, com regras e defaults exatamente como na tabela de `### Configuration & Infrastructure` (inherited `phase-01-configuracao-base/TD-02`), e acrescentar as 4 chaves `S3_*` obrigatórias ao `requiredEnv` de `src/config/env.validation.integration-spec.ts`, senão os testes existentes desse arquivo falham.
 4. Extrair o array `load` do `ConfigModule.forRoot` de `src/app.module.ts` para uma constante exportada em `src/config/config-load.ts`, acrescentando `queueConfig`, `storageConfig` e `videoConfig`, para que o `WorkerModule` (SI-03.16) carregue a mesma lista sem duplicação.
@@ -315,7 +315,7 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 
 **Technical actions:**
 
-1. `VideosService.completeUpload(id, userId)`, passos 1–3: `findOwnedOrFail` + `assertUploading`; `listAllParts`; parte faltando em `1..partCount` → `UploadIncompleteException` (mensagem com as 20 primeiras e `…`), vídeo segue `uploading`; soma das partes ≠ `size_bytes` → `UploadSizeMismatchException`, vídeo segue `uploading` (per `phase-03-videos/TD-05`, `phase-03-videos/TD-06`).
+1. `VideosService.completeUpload(id, userId)`, passos 1–3: `findOwnedOrFail` + `assertUploading`; `listAllParts`; parte faltando em `1..partCount` → `UploadIncompleteException` (mensagem com as 20 primeiras e `…`), vídeo segue `uploading`; tamanho de parte fora do esperado (cada parte `n < partCount` com exatamente `partSize` e a última com `size_bytes − (partCount − 1) × partSize`, o que também garante a soma; sem isso o S3 recusa partes < 5 MiB com `EntityTooSmall` e a resposta viraria 500) → `UploadSizeMismatchException`, vídeo segue `uploading` (per `phase-03-videos/TD-05`, `phase-03-videos/TD-06`).
 2. Passo 4: `completeMultipartUpload` com as partes do `ListParts` ordenadas por `PartNumber`; em `NoSuchUpload`, lança `InvalidVideoStateException` (a linha já saiu de `uploading` ou um `complete` concorrente ainda não commitou; nunca 500).
 3. Passos 5–6: `headObject` de backstop (`ContentLength ≠ size_bytes` ou > `VIDEO_MAX_UPLOAD_BYTES` → `deleteObject`, `failed` + `failure_reason = 'UPLOAD_SIZE_MISMATCH'` + `upload_id = null`, `UploadSizeMismatchException`); depois, update condicional (`WHERE id = :id AND processing_status = 'uploading'`) para `processing` + `upload_id = null`, e 0 linhas afetadas → `InvalidVideoStateException` (per `phase-03-videos/TD-12`).
 4. Passo 7, após o commit: `@InjectQueue(VIDEO_PROCESSING_QUEUE)` + `add(PROCESS_VIDEO_JOB, { videoId }, processVideoJobOptions(videoId))` limitado por timeout de 3 s (`ENQUEUE_TIMEOUT_MS`; com o Redis fora do ar o `add` fica pendente indefinidamente). Se lançar ou estourar o timeout, `logger.error` com `videoId`, comentário no `catch` citando `### API Contracts` → `#### POST /videos/:id/upload/complete` passo 7, e o erro é engolido (exceção deliberada a `.claude/rules/nestjs-services.md`) (per `phase-03-videos/TD-01`).
@@ -326,7 +326,7 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 | Artifact | Layer | Test file |
 |----------|-------|-----------|
 | `VideosService.completeUpload` | Unit: enqueue que lança **ou que nunca resolve** (timeout, com fake timers) → retorna o vídeo `processing` e chama `logger.error` com `videoId`; `NoSuchUpload` → `INVALID_VIDEO_STATE`, com a linha já fora de `uploading` e também ainda `uploading`; update condicional com 0 linhas → `INVALID_VIDEO_STATE`; mensagem de `UPLOAD_INCOMPLETE` truncada em 20 | `src/videos/videos.service.spec.ts` |
-| `VideosService.completeUpload` | Integration (Postgres + MinIO + Redis): partes reais enviadas → objeto `{id}/source` completo, linha `processing` com `upload_id` nulo, job `process-video` com `jobId = videoId` na fila `test`; soma divergente → `UPLOAD_SIZE_MISMATCH` com a linha ainda `uploading` | `src/videos/videos.service.integration-spec.ts` |
+| `VideosService.completeUpload` | Integration (Postgres + MinIO + Redis): partes reais enviadas → objeto `{id}/source` completo, linha `processing` com `upload_id` nulo, job `process-video` com `jobId = videoId` na fila `test`; soma divergente → `UPLOAD_SIZE_MISMATCH` com a linha ainda `uploading`; partes de 4 MiB + 6 MiB num upload de 10 MiB (soma correta, parte 1 menor que `partSize`) → `UPLOAD_SIZE_MISMATCH`, nunca 500 | `src/videos/videos.service.integration-spec.ts` |
 
 **Dependencies:** SI-03.9 — reusa `findOwnedOrFail`/`assertUploading`.
 
@@ -334,7 +334,7 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 
 - Com todas as partes enviadas, `POST /videos/:id/upload/complete` retorna `202` com `VideoResponse` em `processingStatus: "processing"`, e um job `process-video` com `jobId = videoId` entra na fila.
 - Com partes faltando, retorna `409` `UPLOAD_INCOMPLETE` com os números faltantes em `message`, e o vídeo continua `uploading` (retomável via `part-urls`).
-- Com a soma das partes diferente do `sizeBytes` declarado, retorna `422` `UPLOAD_SIZE_MISMATCH`, e o vídeo continua `uploading`.
+- Com a soma das partes diferente do `sizeBytes` declarado, ou com alguma parte de tamanho diferente do esperado, retorna `422` `UPLOAD_SIZE_MISMATCH`, e o vídeo continua `uploading`.
 - Uma segunda chamada de `complete` retorna `409` `INVALID_VIDEO_STATE`.
 - Com o Redis indisponível no momento do enqueue (o `add` falha ou fica pendente), a resposta ainda é `202` em até ~3 s e o log registra um erro de nível `error` com o `videoId`.
 - Chamada de outro usuário retorna `404` `VIDEO_NOT_FOUND`.
@@ -529,7 +529,7 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 **Technical actions:**
 
 1. Criar `src/videos/processing/media-metadata.util.ts` (funções puras): `mapProbeOutput(json)` → `MediaMetadata` (`durationSeconds`, `formatName`, `width`/`height`/`videoCodec` do primeiro stream de vídeo, `audioCodec` do primeiro stream de áudio ou `null`), lançando `InvalidMediaError` quando não há stream de vídeo; e `thumbnailTimestamp(duration)` = `min(duration × 0.1, 10)`, com `0` para duração desconhecida ou < 1 s (per `phase-03-videos/TD-03`).
-2. Criar `src/videos/processing/media-tools.service.ts` com `probe(input)` via `execFile('ffprobe', ['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', input], { timeout: 120000 })` e `extractFrame(input, atSeconds, outPath)` via `ffmpeg -ss <t> -i <input> -frames:v 1 <out>.jpg` (per `phase-03-videos/TD-03`, `phase-03-videos/TD-04`).
+2. Criar `src/videos/processing/media-tools.service.ts` com `probe(input)` via `execFile('ffprobe', ['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', input], { timeout: 120000 })` e `extractFrame(input, atSeconds, outPath)` via `execFile('ffmpeg', ['-ss', t, '-i', input, '-frames:v', '1', out], { timeout: 120000 })` (mesmo timeout do `probe`, para um ffmpeg travado não prender o slot do worker) (per `phase-03-videos/TD-03`, `phase-03-videos/TD-04`).
 3. Classificação de erro no wrapper: saída ≠ 0 com marcador de parse no stderr (`Invalid data found when processing input`, `moov atom not found`) → `InvalidMediaError`; timeout e demais saídas ≠ 0 → `MediaToolTransientError` (per `### Events/Messages` → Error classification).
 4. Gerar uma vez com ffmpeg e versionar as fixtures `test/fixtures/sample-2s.mp4` (testsrc + tom, poucos KB) e `test/fixtures/not-a-video.mp4` (bytes aleatórios).
 
@@ -538,6 +538,7 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 | Artifact | Layer | Test file |
 |----------|-------|-----------|
 | `mapProbeOutput` / `thumbnailTimestamp` | Unit: política de frame (curto, longo, desconhecido); sem áudio → `audioCodec: null`; sem stream de vídeo → `InvalidMediaError` | `src/videos/processing/media-metadata.util.spec.ts` |
+| `MediaToolsService` | Unit (`execFile` mockado): processo morto pelo timeout (`killed`/`SIGTERM`) em `probe` e em `extractFrame` → `MediaToolTransientError`; saída ≠ 0 com `moov atom not found` no stderr → `InvalidMediaError`; outra saída ≠ 0 → `MediaToolTransientError` | `src/videos/processing/media-tools.service.spec.ts` |
 | `MediaToolsService` | Integration (ffprobe/ffmpeg reais + MinIO): `probe` do `sample-2s.mp4` via URL pré-assinada interna retorna duração ≈ 2 s, dimensões e codecs; `extractFrame` grava um JPEG; `not-a-video.mp4` → `InvalidMediaError` | `src/videos/processing/media-tools.service.integration-spec.ts` |
 
 **Dependencies:** SI-03.5 — a integração lê a fixture por URL pré-assinada interna (e usa o FFmpeg instalado em SI-03.2).
@@ -547,7 +548,7 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 - `probe` do `sample-2s.mp4` servido por URL pré-assinada interna retorna `durationSeconds` ≈ 2, `width`/`height` da fixture e `videoCodec`/`audioCodec` preenchidos.
 - `probe` do `not-a-video.mp4` falha com erro classificado como mídia inválida (permanente).
 - `extractFrame` no segundo `thumbnailTimestamp(2)` (= 0,2 s) grava um arquivo JPEG válido.
-- Um ffprobe que excede o timeout falha com erro classificado como transitório.
+- Um ffprobe ou ffmpeg que excede o timeout falha com erro classificado como transitório.
 
 ---
 
@@ -620,7 +621,7 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 **Technical actions:**
 
 1. Criar `test/helpers/video-pipeline.ts`: sobe o app HTTP (mesma configuração dos e2e existentes) **e** o `WorkerModule` no mesmo processo; helpers `uploadViaPresignedParts(initiateBody, filePath, { stopAfterPart? })` (PUT com `fetch` nas URLs de parte) e `waitForStatus(app, token, videoId, status, timeoutMs)` com polling em `GET /videos/:id` (per `phase-03-videos/TD-14`).
-2. Em `beforeAll`, gerar com ffmpeg em `os.tmpdir()` um vídeo de tamanho determinístico entre 10 e 12 MiB (`testsrc` + ruído com bitrate fixo e `-fs` limitando o arquivo), que vira 3 partes de 5 MiB abaixo do teto de teste de 12 MiB; o `sizeBytes` do initiate vem sempre do tamanho real do arquivo (`fs.statSync`); em `afterAll`, `obliterateTestQueues`, fechar worker e app, `cleanAllTables` e remover o arquivo, sem open handles.
+2. Em `beforeAll`, gerar com ffmpeg em `os.tmpdir()` um vídeo de tamanho determinístico entre 10 e 11,5 MiB (`testsrc` + ruído com bitrate fixo e `-fs 11M`: o ffmpeg grava o índice `moov` depois de atingir o limite, então o arquivo passa um pouco de 11 MiB, mas fica abaixo do teto de teste de 12 MiB), que vira 3 partes de 5 MiB; o helper falha cedo se o arquivo gerado tiver ≥ 12 MiB; o `sizeBytes` do initiate vem sempre do tamanho real do arquivo (`fs.statSync`); em `afterAll`, `obliterateTestQueues`, fechar worker e app, `cleanAllTables` e remover o arquivo, sem open handles.
 3. Criar `test/videos-pipeline.e2e-spec.ts` com os fluxos: (a) upload de 3 partes com pausa após a parte 1 e retomada via `part-urls` → `complete` `202` → `ready` com metadados e thumbnail; (b) playback com `Range` → `206` e download com `Content-Disposition: attachment`; (c) `not-a-video.mp4` → `failed`/`INVALID_MEDIA`; (d) dois uploads geram `publicId`s distintos.
 
 **Tests:**
@@ -845,7 +846,7 @@ Finishes the multipart upload, verifies the size and enqueues processing (per `p
 **Behavior (order matters):**
 1. Owner + `processing_status = 'uploading'` check.
 2. `ListParts`: if any part in `1..partCount` is missing, reject with `UPLOAD_INCOMPLETE`. The video stays `uploading` and is resumable.
-3. If the sum of the listed part sizes ≠ `size_bytes`, reject with `UPLOAD_SIZE_MISMATCH`. The video stays `uploading`, so the client can re-PUT a part or abort.
+3. If any listed part has an unexpected size (every part `n < partCount` must be exactly `partSize`, the last one `size_bytes − (partCount − 1) × partSize`, which also guarantees the sum), reject with `UPLOAD_SIZE_MISMATCH`. Without this check, S3 rejects parts below 5 MiB with `EntityTooSmall` and the answer would be a 500. The video stays `uploading`, so the client can re-PUT a part or abort.
 4. `CompleteMultipartUpload` with the parts sorted ascending by `PartNumber`. Concurrency: if it fails with `NoSuchUpload` (a concurrent `complete`/abort/sweep already consumed the upload), re-read the row. Whether it is no longer `uploading` or still `uploading` (a concurrent `complete` consumed the upload but has not committed yet), reject with `INVALID_VIDEO_STATE` (409), never a 500. The step-6 transition is a conditional update (`WHERE id = :id AND processing_status = 'uploading'`). If it affects 0 rows, the answer is also `INVALID_VIDEO_STATE`.
 5. `HeadObject` on `source_key` (backstop). If `ContentLength` ≠ `size_bytes` or > `VIDEO_MAX_UPLOAD_BYTES`, call `DeleteObject`, set `processing_status = 'failed'`, `failure_reason = 'UPLOAD_SIZE_MISMATCH'`, `upload_id = null`, and reject with `UPLOAD_SIZE_MISMATCH`.
 6. Set `processing_status = 'processing'`, `upload_id = null`, and commit.
@@ -1009,7 +1010,7 @@ Response header `Cache-Control: no-store`.
 | INVALID_VIDEO_STATE | 409 | Operation not allowed in the current video state | `part-urls`, `complete` or `DELETE …/upload` when `processing_status` ≠ `'uploading'` (e.g. `complete` on a video that is already `processing`, `ready` or `failed`) (per `phase-03-videos/TD-12`) |
 | INVALID_PART_NUMBER | 400 | Part number out of range | `POST /videos/:id/upload/part-urls` with a `partNumber` > `partCount` |
 | UPLOAD_INCOMPLETE | 409 | Upload is missing parts: {n1, n2, …} | `POST /videos/:id/upload/complete` when `ListParts` lacks any part in `1..partCount`. The video stays `uploading` (resumable) |
-| UPLOAD_SIZE_MISMATCH | 422 | Uploaded size does not match the declared size | `complete` when the sum of listed parts ≠ `size_bytes` (video stays `uploading`), **or** the post-complete `HeadObject` size ≠ `size_bytes` / > max (object deleted, video → `failed` with `failure_reason = 'UPLOAD_SIZE_MISMATCH'`) (per `phase-03-videos/TD-06`) |
+| UPLOAD_SIZE_MISMATCH | 422 | Uploaded size does not match the declared size | `complete` when a listed part has an unexpected size or their sum ≠ `size_bytes` (video stays `uploading`), **or** the post-complete `HeadObject` size ≠ `size_bytes` / > max (object deleted, video → `failed` with `failure_reason = 'UPLOAD_SIZE_MISMATCH'`) (per `phase-03-videos/TD-06`) |
 | VIDEO_NOT_READY | 409 | Video is not ready for playback | `GET /videos/:publicId/playback` or `/download` when the video is visible to the caller but `processing_status` ≠ `'ready'` |
 
 Inherited, not redefined: `401` from `JwtAuthGuard` (missing/invalid token on JWT routes; invalid/expired token sent to an `@OptionalAuth()` route) and `400 VALIDATION_ERROR`.

@@ -9,7 +9,7 @@ libs:
     context7_id: "/redis/ioredis/v6.0.0"
     fetched_at: "2026-11-24T23:40:00-03:00"
   "@nestjs/bullmq":
-    version: "^12.0.2"
+    version: "^11.0.5"
     context7_id: "/nestjs/bull"
     fetched_at: "2026-11-24T21:09:40-03:00"
   "@aws-sdk/client-s3":
@@ -25,19 +25,19 @@ libs:
     context7_id: "/nestjs/throttler/v6.7.1"
     fetched_at: "2026-11-24T21:09:40-03:00"
 sources_mtime:
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-11-24T21:09:01-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-11-24T23:28:59-03:00"
 ---
 
 # Library References — phase-03-videos
 
-Versions: `bullmq`, `@nestjs/bullmq`, `@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner` are not installed yet. Each version is the npm `latest` checked on 2026-11-24 (`npm view`). `@nestjs/throttler` is already installed at 6.5.0 (`^6.5.0` in `package.json`).
+Versions: `bullmq`, `@nestjs/bullmq`, `@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner` are not installed yet. Each version is the npm `latest` checked on 2026-11-24 (`npm view`), except `@nestjs/bullmq` (see below). `@nestjs/throttler` is already installed at 6.5.0 (`^6.5.0` in `package.json`).
 
 **Doc/version discrepancies (flagged, not blocking):**
 
 - `bullmq` docs come from context7 v6.5.3, the nearest indexed version to 6.7.10. Both are in the same v6 major (Job Schedulers API, no legacy repeatable jobs).
 - `@aws-sdk/*` docs come from context7 v3.1153.0, the nearest indexed version to 3.1177.0. Same v3 line; the APIs used here (`S3Client`, multipart commands, `getSignedUrl`) are stable across these minors.
 - `@nestjs/throttler` docs come from v6.7.1, while 6.5.0 is installed. Phase 03 uses only `@SkipThrottle()`, which behaves the same in both.
-- `@nestjs/bullmq` has no versioned context7 index (`/nestjs/bull` repo docs). Cross-check with the NestJS v11 queues technique (`/nestjs/docs.nestjs.com`, `techniques/queues`). `@nestjs/bullmq@12.0.2` peers `@nestjs/core ^10||^11||^12` and `bullmq ^3–^6` (per the decisions doc's Sources section).
+- `@nestjs/bullmq` has no versioned context7 index (`/nestjs/bull` repo docs). Cross-check with the NestJS v11 queues technique (`/nestjs/docs.nestjs.com`, `techniques/queues`). The decisions doc's Sources cite `12.0.2` (npm `latest` at research time). **Pinned to `11.0.5` at the final pre-implementation review (2026-11-25):** `@nestjs/bullmq@12.x` and `@nestjs/bull-shared@12.x` ship `"type": "module"` (ESM-only, `npm view @nestjs/bullmq@12.0.2 type`). The project's Jest (ts-jest, CommonJS, default `transformIgnorePatterns`) cannot load them: a real install with `jest@30.3.0` fails with `SyntaxError: Unexpected token 'export'`, while `11.0.5` passes. `11.0.5` is CommonJS, peers `bullmq ^3||^4||^5||^6` and `@nestjs/core ^10||^11`, and exports the same API used here (`BullModule.forRootAsync`, `registerQueue`, `Processor`, `WorkerHost`, `InjectQueue`, `getQueueToken`, `OnWorkerEvent`). `tsc --noEmit` does not catch the ESM issue; only Jest does.
 
 ## ioredis
 
@@ -81,6 +81,8 @@ await queue.upsertJobScheduler(
 - Production: Redis must run with `maxmemory-policy noeviction` (decisions doc, "going-to-production").
 
 ## @nestjs/bullmq
+
+Pinned: `^11.0.5` (not 12.x: ESM-only, breaks Jest; see the discrepancy note above).
 
 Used by: `phase-03-videos/TD-01`, `phase-03-videos/TD-02` (separate worker entrypoint loads `WorkerModule`), `phase-03-videos/TD-12`.
 
