@@ -228,7 +228,7 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 ### SI-03.8 — Endpoint POST /videos/uploads
 
 **Route:** POST /videos/uploads
-**Test Specs:** _pending /plan-test-specs_
+**Test Specs:** see `nestjs-project/specs/videos-uploads.plan.md`
 **Authorization:** JWT obrigatório; o upload vai sempre para o canal do próprio caller (per `### Authorization Matrix`)
 **API Contract:** see `## Technical Specifications` → `### API Contracts` → `#### POST /videos/uploads`
 
@@ -266,7 +266,7 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 ### SI-03.9 — Endpoint POST /videos/:id/upload/part-urls
 
 **Route:** POST /videos/:id/upload/part-urls
-**Test Specs:** _pending /plan-test-specs_
+**Test Specs:** see `nestjs-project/specs/videos-upload-part-urls.plan.md`
 **Authorization:** Owner apenas; não-dono recebe `404 VIDEO_NOT_FOUND` (per `### Authorization Matrix`)
 **API Contract:** see `## Technical Specifications` → `### API Contracts` → `#### POST /videos/:id/upload/part-urls`
 
@@ -303,7 +303,7 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 ### SI-03.10 — Endpoint POST /videos/:id/upload/complete
 
 **Route:** POST /videos/:id/upload/complete
-**Test Specs:** _pending /plan-test-specs_
+**Test Specs:** see `nestjs-project/specs/videos-upload-complete.plan.md`
 **Authorization:** Owner apenas; não-dono recebe `404 VIDEO_NOT_FOUND` (per `### Authorization Matrix`)
 **API Contract:** see `## Technical Specifications` → `### API Contracts` → `#### POST /videos/:id/upload/complete`
 
@@ -340,7 +340,7 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 ### SI-03.11 — Endpoint DELETE /videos/:id/upload
 
 **Route:** DELETE /videos/:id/upload
-**Test Specs:** _pending /plan-test-specs_
+**Test Specs:** see `nestjs-project/specs/videos-upload-abort.plan.md`
 **Authorization:** Owner apenas; não-dono recebe `404 VIDEO_NOT_FOUND` (per `### Authorization Matrix`)
 **API Contract:** see `## Technical Specifications` → `### API Contracts` → `#### DELETE /videos/:id/upload`
 
@@ -371,7 +371,7 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 ### SI-03.12 — Endpoint GET /videos/:id
 
 **Route:** GET /videos/:id
-**Test Specs:** _pending /plan-test-specs_
+**Test Specs:** see `nestjs-project/specs/videos-detail.plan.md`
 **Authorization:** Owner apenas; não-dono recebe `404 VIDEO_NOT_FOUND` (per `### Authorization Matrix`)
 **API Contract:** see `## Technical Specifications` → `### API Contracts` → `#### GET /videos/:id`
 
@@ -427,7 +427,7 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 ### SI-03.14 — Endpoint GET /videos/:publicId/playback
 
 **Route:** GET /videos/:publicId/playback
-**Test Specs:** _pending /plan-test-specs_
+**Test Specs:** see `nestjs-project/specs/videos-playback.plan.md`
 **Authorization:** `@OptionalAuth()` — dono com vídeo `ready`; demais só quando publicado (em rascunho, `404`) (per `### Authorization Matrix`)
 **API Contract:** see `## Technical Specifications` → `### API Contracts` → `#### GET /videos/:publicId/playback`
 
@@ -461,7 +461,7 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 ### SI-03.15 — Endpoint GET /videos/:publicId/download
 
 **Route:** GET /videos/:publicId/download
-**Test Specs:** _pending /plan-test-specs_
+**Test Specs:** see `nestjs-project/specs/videos-download.plan.md`
 **Authorization:** `@OptionalAuth()` — mesma regra da playback (per `### Authorization Matrix`)
 **API Contract:** see `## Technical Specifications` → `### API Contracts` → `#### GET /videos/:publicId/download`
 
