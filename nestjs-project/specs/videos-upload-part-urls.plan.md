@@ -113,5 +113,5 @@ target_file: test/videos-upload-part-urls.e2e-spec.ts
 **Steps:**
   1. POST /videos/:id/upload/part-urls sem header `Authorization`
     - expect: status `401`
-  2. POST /videos/:id/upload/part-urls com token do dono expirado (`exp` no passado)
+  2. POST /videos/:id/upload/part-urls com token do dono expirado (criado com `jwtService.sign(payload, { expiresIn: -60 })`, nunca com `exp` no payload)
     - expect: status `401`

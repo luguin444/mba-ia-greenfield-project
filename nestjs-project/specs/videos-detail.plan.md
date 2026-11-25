@@ -27,7 +27,7 @@ target_file: test/videos-detail.e2e-spec.ts
 **Steps:**
   1. GET /videos/:id com o token do dono
     - expect: status `200`
-    - expect: `id = videoId`, `publicId` de 11 caracteres, `processingStatus: "uploading"`, `publicationStatus: "draft"`, `failureReason: null`, `fileName: "clip.mp4"`, `mimeType: "video/mp4"`, `sizeBytes: 1048576`
+    - expect: `id = videoId`, `publicId` de 11 caracteres, `processingStatus: "uploading"`, `publicationStatus: "draft"`, `failureReason: null`, `title: "clip"` (padrão derivado do `fileName`), `fileName: "clip.mp4"`, `mimeType: "video/mp4"`, `sizeBytes: 1048576`
     - expect: `durationSeconds`, `width`, `height`, `videoCodec`, `audioCodec`, `formatName`, `thumbnailUrl` e `processedAt` são `null`; `createdAt`/`updatedAt` são ISO-8601
     - expect: o corpo não expõe campos internos (`uploadId`, `upload_id`, `sourceKey`, `source_key`, `channelId`, `channel_id`)
 
@@ -70,7 +70,7 @@ target_file: test/videos-detail.e2e-spec.ts
 **Steps:**
   1. GET /videos/:id sem header `Authorization`
     - expect: status `401`
-  2. GET /videos/:id com token do dono expirado (`exp` no passado)
+  2. GET /videos/:id com token do dono expirado (criado com `jwtService.sign(payload, { expiresIn: -60 })`, nunca com `exp` no payload)
     - expect: status `401`
 
 #### 2.3. id-que-nao-e-uuid-retorna-400

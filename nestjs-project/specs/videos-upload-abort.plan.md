@@ -92,7 +92,7 @@ target_file: test/videos-upload-abort.e2e-spec.ts
 **Steps:**
   1. DELETE /videos/:id/upload sem header `Authorization`
     - expect: status `401`
-  2. DELETE /videos/:id/upload com token do dono expirado (`exp` no passado)
+  2. DELETE /videos/:id/upload com token do dono expirado (criado com `jwtService.sign(payload, { expiresIn: -60 })`, nunca com `exp` no payload)
     - expect: status `401`
   3. DELETE /videos/not-a-uuid/upload com o token do dono
     - expect: status `400` com `error: "VALIDATION_ERROR"`

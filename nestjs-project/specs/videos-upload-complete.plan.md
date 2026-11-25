@@ -121,7 +121,7 @@ target_file: test/videos-upload-complete.e2e-spec.ts
 **Steps:**
   1. POST /videos/:id/upload/complete sem header `Authorization`
     - expect: status `401`
-  2. POST /videos/:id/upload/complete com token do dono expirado (`exp` no passado)
+  2. POST /videos/:id/upload/complete com token do dono expirado (criado com `jwtService.sign(payload, { expiresIn: -60 })`, nunca com `exp` no payload)
     - expect: status `401`
   3. POST /videos/not-a-uuid/upload/complete com o token do dono
     - expect: status `400` com `error: "VALIDATION_ERROR"`

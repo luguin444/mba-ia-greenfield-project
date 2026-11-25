@@ -257,12 +257,12 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 
 - `POST /videos/uploads` com `{ fileName, sizeBytes, mimeType: "video/mp4" }` válidos retorna `201` com `videoId`, `publicId` de 11 caracteres, `uploadId`, `partSize`, `partCount`, `parts` (≤100, `partNumber` crescente) e `expiresAt`; o vídeo fica `uploading`/`draft`.
 - Para `sizeBytes = 10737418240` com os defaults, o cálculo dá `partSize = 67108864` e `partCount = 160` (verificado no teste unitário: no Jest o teto de upload é 12 MiB, então via HTTP a mesma chamada retorna `413`).
-- Sem `title` no body, o vídeo é criado com o `fileName` sem extensão como título (`aula-01.mp4` → `aula-01`); com `title`, o informado (após trim) é gravado.
 - `sizeBytes` acima de `VIDEO_MAX_UPLOAD_BYTES` retorna `413` `VIDEO_TOO_LARGE`, sem criar linha nem multipart.
 - Com o canal já em `VIDEO_MAX_ACTIVE_UPLOADS_PER_CHANNEL` uploads `uploading`, retorna `409` `ACTIVE_UPLOAD_LIMIT_REACHED`.
 - `mimeType: "image/png"` ou uma chave desconhecida no body retorna `400` `VALIDATION_ERROR`.
 - Sem token retorna `401`.
 - Dezenas de chamadas seguidas do mesmo IP nunca recebem `429` (rota fora do throttler).
+- Sem `title` no body, o vídeo é criado com o `fileName` sem extensão como título (`aula-01.mp4` → `aula-01`); com `title`, o informado (após trim) é gravado.
 
 ---
 

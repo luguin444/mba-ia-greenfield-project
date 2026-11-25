@@ -73,7 +73,7 @@ target_file: test/videos-download.e2e-spec.ts
 **Last sync:** 2026-11-25T01:35:27Z
 
 **Steps:**
-  1. GET /videos/:publicId/download com `Authorization: Bearer <token do dono assinado com o mesmo segredo e exp no passado>`
+  1. GET /videos/:publicId/download com `Authorization: Bearer <token do dono expirado, criado com `jwtService.sign(payload, { expiresIn: -60 })`, nunca com `exp` no payload>`
     - expect: status `401` (não `404` e não tratado como anônimo)
 
 #### 2.3. dono-com-video-nao-ready-recebe-409
