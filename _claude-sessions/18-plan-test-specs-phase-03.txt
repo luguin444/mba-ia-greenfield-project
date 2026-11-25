@@ -1,0 +1,442 @@
+
+❯ <browser_instruction># Claude in Chrome browser automation
+
+  You have access to browser automation tools (mcp__claude-in-chrome__*) for
+  interacting with web pages in Chrome. Follow these guidelines for effective
+  browser automation.
+
+  ## Loading deferred tools
+
+  If the mcp__claude-in-chrome__* tools are deferred (must be loaded via
+  ToolSearch before use), load every tool you expect to need in ONE ToolSearch
+  call — the select query accepts a comma-separated list — never one call per
+  tool. Start with the core set:
+
+  ToolSearch with query
+  "select:mcp__claude-in-chrome__tabs_context_mcp,mcp__claude-in-chrome__naviga
+  te,mcp__claude-in-chrome__computer,mcp__claude-in-chrome__read_page,mcp__clau
+  de-in-chrome__tabs_create_mcp,mcp__claude-in-chrome__tabs_close_mcp"
+
+  Add task-specific tools to the same call when the task obviously needs them:
+  read_console_messages / read_network_requests for debugging, form_input for
+  forms, gif_creator for recordings, javascript_tool for page scripting.
+
+  ## GIF recording
+
+  When performing multi-step browser interactions that the user may want to
+  review or share, use mcp__claude-in-chrome__gif_creator to record them.
+
+  You must ALWAYS:
+  * Capture extra frames before and after taking actions to ensure smooth
+  playback
+  * Name the file meaningfully to help the user identify it later (e.g.,
+  "login_process.gif")
+
+  ## Console log debugging
+
+  You can use mcp__claude-in-chrome__read_console_messages to read console
+  output. Console output may be verbose. If you are looking for specific log
+  entries, use the 'pattern' parameter with a regex-compatible pattern. This
+  filters results efficiently and avoids overwhelming output. For example, use
+  pattern: "[MyApp]" to filter for application-specific logs rather than
+  reading all console output.
+
+  ## Alerts and dialogs
+
+  IMPORTANT: Do not trigger JavaScript alerts, confirms, prompts, or browser
+  modal dialogs through your actions. These browser dialogs block all further
+  browser events and will prevent the extension from receiving any subsequent
+  commands. Instead, when possible, use console.log for debugging and then use
+  the mcp__claude-in-chrome__read_console_messages tool to read those log
+  messages. If a page has dialog-triggering elements:
+  1. Avoid clicking buttons or links that may trigger alerts (e.g., "Delete"
+  buttons with confirmation dialogs)
+  2. If you must interact with such elements, warn the user first that this may
+  interrupt the session
+  3. Use mcp__claude-in-chrome__javascript_tool to check for and dismiss any
+  existing dialogs before proceeding
+
+  If you accidentally trigger a dialog and lose responsiveness, inform the user
+  they need to manually dismiss it in the browser.
+
+  ## Avoid rabbit holes and loops
+
+  When using browser automation tools, stay focused on the specific task. If
+  you encounter any of the following, stop and ask the user for guidance:
+  - Unexpected complexity or tangential browser exploration
+  - Browser tool calls failing or returning errors after 2-3 attempts
+  - No response from the browser extension
+  - Page elements not responding to clicks or input
+  - Pages not loading or timing out
+  - Unable to complete the browser task despite multiple approaches
+
+  Explain what you attempted, what went wrong, and ask how the user would like
+  to proceed. Do not keep retrying the same failing browser action or explore
+  unrelated pages without checking in first.
+
+  ## Tab context and session startup
+
+  IMPORTANT: At the start of each browser automation session, call
+  mcp__claude-in-chrome__tabs_context_mcp first to get information about the
+  user's current browser tabs. Use this context to understand what the user
+  might want to work with before creating new tabs.
+
+  Never reuse tab IDs from a previous/other session. Follow these guidelines:
+  1. Only reuse an existing tab if the user explicitly asks to work with it
+  2. Otherwise, create a new tab with mcp__claude-in-chrome__tabs_create_mcp
+  3. If a tool returns an error indicating the tab doesn't exist or is invalid,
+  call tabs_context_mcp to get fresh tab IDs
+  4. When a tab is closed by the user or a navigation error occurs, call
+  tabs_context_mcp to see what tabs are available</browser_instruction>
+
+❯ Contexto: Fase 03 do StreamTube, branch feature/phase-03-videos. Plano
+  mestre: ~/.claude/plans/tenho-o-seguinte-trabalho-indexed-canyon.md, leia só
+  a Etapa 3 (item W3c). O plano docs/phases/phase-03-videos/phase-03-videos.md
+  (21 SIs) já passou pelo portão G3 do líder.
+
+  Objetivo: gerar as specs de teste e2e dos 7 SIs de controller marcados com
+  _pending /plan-test-specs_ (SI-03.8 a 03.12, 03.14, 03.15) em
+  nestjs-project/specs/, e trocar os placeholders no plano pelos links.
+
+  Regras:
+  - Não altere Technical Specifications nem a lista de SIs; só os campos Test
+  Specs:.
+  - Os cenários devem cobrir a Authorization Matrix e o Error Catalog: 401 sem
+  token, 404 idêntico para não-dono/inexistente (hide, don't forbid),
+  409/413/422 conforme a spec, e no playback/download os 4 casos de
+  optional-auth (anônimo, não-dono, dono, token expirado).
+  - Ao fim, confirme que nenhum _pending /plan-test-specs_ restou no plano.
+
+  Commit local autorizado ao fim: docs: phase 03 backend test specs (sem
+  Co-Authored-By, git add só com os arquivos explícitos, sem push).
+
+  Ao terminar: commit, /export 18-plan-test-specs-phase-03.txt (só o nome do
+  arquivo) e resumo de 3 linhas para o líder.
+  /plan-test-specs  phase-03-videos
+
+  Listed 1 directory (ctrl+o to expand)
+
+⏺ Skill(plan-test-specs)
+  ⎿  Loaded skill
+
+⏺ Bash(P=docs/phases/phase-03-videos/phase-03-videos.md; wc -l $P; awk
+      '/^---$/{f=!f;next} f' $P | head -30; grep -n "^### SI-\|^\*\*Test
+      Specs:\*\*\|^\*\*Route:\*\*"…)
+  ⎿  (No output)
+
+⏺ Bash(sed -n 134,160p
+      ~/.claude/plans/tenho-o-seguinte-trabalho-indexed-canyon.md; echo ------;
+      sed -n 196,500p docs/phases/phase-03-videos/phase-03-videos.md)
+  ⎿  (No output)
+
+⏺ Bash(grep -n "^## \|^### \|^#### "
+      docs/phases/phase-03-videos/phase-03-videos.md | sed -n '1,200p' | grep -v
+      "SI-"; ls nestjs-project/test; ls docs/phases/*/ ; find…)
+  ⎿  (No output)
+
+⏺ Gerando as specs de teste e2e dos 7 SIs de controller. Já li os SIs; agora
+  estou lendo as Technical Specs (API Contracts, Authorization Matrix, Error
+  Catalog) e a convenção de e2e do backend.
+
+⏺ Bash(sed -n 668,1014p docs/phases/phase-03-videos/phase-03-videos.md)
+  ⎿  (No output)
+
+⏺ Bash(sed -n 78,104p docs/phases/phase-03-videos/phase-03-videos.md; sed -n
+      611,640p docs/phases/phase-03-videos/phase-03-videos.md; head -60
+      next-frontend/specs/logi…)
+  ⎿  (No output)
+  ⎿  Loaded next-frontend/CLAUDE.md
+  ⎿  Loaded nestjs-project/CLAUDE.md
+  ⎿  Loaded .claude/rules/nestjs-testing.md
+  ⎿  Loaded .claude/rules/typescript-strict.md
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project/.claude/skills/testing-guide-nestjs-project && ls -R | head;
+      grep -rn -i "e2…)
+  ⎿  (No output)
+
+⏺ Bash(grep -rn -i "e2e" . | head -40; sed -n 1,80p artifacts/controllers.md)
+  ⎿  (No output)
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project && P=docs/phases/phase-03-videos/phase-03-videos.md; sed -n
+      1090,1140p $P; g…)
+  ⎿  (No output)
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project/nestjs-project && grep -rn -A4 "ThrottlerModule.for" src |
+      head; grep -n "Jw…)
+  ⎿  (No output)
+
+⏺ Contexto lido. Primeiro troco os 7 placeholders no plano (assim as specs ficam
+  com mtime mais novo que o plano, como o preflight do /implement exige),
+  depois escrevo as specs.
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project && P=docs/phases/phase-03-videos/phase-03-videos.md && python3
+      - "$P" <<'EOF…)
+  ⎿  Updated docs/phases/phase-03-videos/phase-03-videos.md +7 -7
+      228  ### SI-03.8 — Endpoint POST /videos/uploads
+      229 
+      230  **Route:** POST /videos/uploads
+      231 -**Test Specs:** _pending /plan-test-specs_                    
+      231 +**Test Specs:** see `nestjs-project/specs/videos-uploads.plan.
+          +md`                                                           
+      232  **Authorization:** JWT obrigatório; o upload vai sempre para o
+            canal do próprio caller (per `### Authorization Matrix`)
+      233  **API Contract:** see `## Technical Specifications` → `### API
+            Contracts` → `#### POST /videos/uploads`
+      234 
+     ...
+      266  ### SI-03.9 — Endpoint POST /videos/:id/upload/part-urls
+      267 
+      268  **Route:** POST /videos/:id/upload/part-urls
+      269 -**Test Specs:** _pending /plan-test-specs_                    
+      269 +**Test Specs:** see `nestjs-project/specs/videos-upload-part-u
+          +rls.plan.md`                                                  
+      270  **Authorization:** Owner apenas; não-dono recebe `404 VIDEO_NO
+           T_FOUND` (per `### Authorization Matrix`)
+      271  **API Contract:** see `## Technical Specifications` → `### API
+            Contracts` → `#### POST /videos/:id/upload/part-urls`
+      272 
+     ...
+      303  ### SI-03.10 — Endpoint POST /videos/:id/upload/complete
+      304 
+      305  **Route:** POST /videos/:id/upload/complete
+      306 -**Test Specs:** _pending /plan-test-specs_                    
+      306 +**Test Specs:** see `nestjs-project/specs/videos-upload-comple
+          +te.plan.md`                                                   
+      307  **Authorization:** Owner apenas; não-dono recebe `404 VIDEO_NO
+           T_FOUND` (per `### Authorization Matrix`)
+      308  **API Contract:** see `## Technical Specifications` → `### API
+            Contracts` → `#### POST /videos/:id/upload/complete`
+      309 
+     ...
+      340  ### SI-03.11 — Endpoint DELETE /videos/:id/upload
+      341 
+      342  **Route:** DELETE /videos/:id/upload
+      343 -**Test Specs:** _pending /plan-test-specs_                    
+      343 +**Test Specs:** see `nestjs-project/specs/videos-upload-abort.
+          +plan.md`                                                      
+      344  **Authorization:** Owner apenas; não-dono recebe `404 VIDEO_NO
+           T_FOUND` (per `### Authorization Matrix`)
+      345  **API Contract:** see `## Technical Specifications` → `### API
+            Contracts` → `#### DELETE /videos/:id/upload`
+      346 
+     ...
+      371  ### SI-03.12 — Endpoint GET /videos/:id
+      372 
+      373  **Route:** GET /videos/:id
+      374 -**Test Specs:** _pending /plan-test-specs_                    
+      374 +**Test Specs:** see `nestjs-project/specs/videos-detail.plan.m
+          +d`                                                            
+      375  **Authorization:** Owner apenas; não-dono recebe `404 VIDEO_NO
+           T_FOUND` (per `### Authorization Matrix`)
+      376  **API Contract:** see `## Technical Specifications` → `### API
+            Contracts` → `#### GET /videos/:id`
+      377 
+     … +16 lines (ctrl+o to expand)
+  ⎿  (files that changed while this command ran, by the command or by
+     another process; a convenience view, not a review or audit of the
+     command)
+
+⏺ Placeholders trocados (0 restantes). Agora escrevo as 7 specs em
+  nestjs-project/specs/.
+
+⏺ Write(nestjs-project/specs/videos-uploads.plan.md)
+  ⎿  Wrote 130 lines to nestjs-project/specs/videos-uploads.plan.md
+      1 ---
+      2 subproject: backend
+      3 runner: jest+supertest
+      4 scope: phase-03-videos
+      5 si: SI-03.8
+      6 target_file: test/videos-uploads.e2e-spec.ts
+      7 ---
+      8
+      9 # POST /videos/uploads — Test Plan
+     … +121 lines (ctrl+o to expand)
+
+⏺ Write(nestjs-project/specs/videos-upload-part-urls.plan.md)
+  ⎿  Wrote 117 lines to
+     nestjs-project/specs/videos-upload-part-urls.plan.md
+      1 ---
+      2 subproject: backend
+      3 runner: jest+supertest
+      4 scope: phase-03-videos
+      5 si: SI-03.9
+      6 target_file: test/videos-upload-part-urls.e2e-spec.ts
+      7 ---
+      8
+      9 # POST /videos/:id/upload/part-urls — Test Plan
+     … +108 lines (ctrl+o to expand)
+
+⏺ Write(nestjs-project/specs/videos-upload-complete.plan.md)
+  ⎿  Wrote 127 lines to nestjs-project/specs/videos-upload-complete.plan.md
+      1 ---
+      2 subproject: backend
+      3 runner: jest+supertest
+      4 scope: phase-03-videos
+      5 si: SI-03.10
+      6 target_file: test/videos-upload-complete.e2e-spec.ts
+      7 ---
+      8
+      9 # POST /videos/:id/upload/complete — Test Plan
+     … +118 lines (ctrl+o to expand)
+⏺ Write(nestjs-project/specs/videos-upload-abort.plan.md)
+  ⎿  Wrote 100 lines to nestjs-project/specs/videos-upload-abort.plan.md
+      1 ---
+      2 subproject: backend
+      3 runner: jest+supertest
+      4 scope: phase-03-videos
+      5 si: SI-03.11
+      6 target_file: test/videos-upload-abort.e2e-spec.ts
+      7 ---
+      8
+      9 # DELETE /videos/:id/upload — Test Plan
+     … +91 lines (ctrl+o to expand)
+
+⏺ Write(nestjs-project/specs/videos-detail.plan.md)
+  ⎿  Wrote 84 lines to nestjs-project/specs/videos-detail.plan.md
+      1 ---
+      2 subproject: backend
+      3 runner: jest+supertest
+      4 scope: phase-03-videos
+      5 si: SI-03.12
+      6 target_file: test/videos-detail.e2e-spec.ts
+      7 ---
+      8
+      9 # GET /videos/:id — Test Plan
+     … +75 lines (ctrl+o to expand)
+
+⏺ Write(nestjs-project/specs/videos-playback.plan.md)
+  ⎿  Wrote 99 lines to nestjs-project/specs/videos-playback.plan.md
+      1 ---
+      2 subproject: backend
+      3 runner: jest+supertest
+      4 scope: phase-03-videos
+      5 si: SI-03.14
+      6 target_file: test/videos-playback.e2e-spec.ts
+      7 ---
+      8
+      9 # GET /videos/:publicId/playback — Test Plan
+     … +90 lines (ctrl+o to expand)
+
+⏺ Write(nestjs-project/specs/videos-download.plan.md)
+  ⎿  Wrote 88 lines to nestjs-project/specs/videos-download.plan.md
+      1 ---
+      2 subproject: backend
+      3 runner: jest+supertest
+      4 scope: phase-03-videos
+      5 si: SI-03.15
+      6 target_file: test/videos-download.e2e-spec.ts
+      7 ---
+      8
+      9 # GET /videos/:publicId/download — Test Plan
+     … +79 lines (ctrl+o to expand)
+
+⏺ Specs escritas. Agora confiro a cobertura de ACs, o formato do Covers AC, os
+  mtimes e se sobrou algum placeholder.
+
+⏺ Bash(P=docs/phases/phase-03-videos/phase-03-videos.md
+      python3 - <<'EOF'…)
+  ⎿  (No output)
+
+⏺ Tudo consistente. Confiro que o diff do plano só mexeu nas linhas de **Test
+  Specs:** e faço o commit autorizado.
+
+⏺ Bash(git diff --stat && git diff -U0
+      docs/phases/phase-03-videos/phase-03-videos.md | grep '^[-+]' | grep -v
+      '^[-+][-+]' | grep -vc 'Test Specs' ; git add docs/phase…)
+  ⎿  (No output)
+
+⏺ Pronto: as 7 specs de teste e2e estão em nestjs-project/specs/, os links estão
+  no plano e o commit local f52a74d docs: phase 03 backend test specs foi feito
+  (sem push, sem Co-Authored-By, git add só com os 8 arquivos).
+
+  Relatório do /plan-test-specs phase-03-videos
+
+  Spec: videos-uploads.plan.md (nestjs-project/specs/videos-uploads.plan.md)
+  SI: SI-03.8
+  Cenários novos: 7
+  ACs cobertos: #1, #3–#7 (o #2 fica de fora, ver abaixo)
+  ────────────────────────────────────────
+  Spec: videos-upload-part-urls.plan.md
+    (nestjs-project/specs/videos-upload-part-urls.plan.md)
+  SI: SI-03.9
+  Cenários novos: 7
+  ACs cobertos: todos (7)
+  ────────────────────────────────────────
+  Spec: videos-upload-complete.plan.md
+    (nestjs-project/specs/videos-upload-complete.plan.md)
+  SI: SI-03.10
+  Cenários novos: 7
+  ACs cobertos: todos (6)
+  ────────────────────────────────────────
+  Spec: videos-upload-abort.plan.md
+    (nestjs-project/specs/videos-upload-abort.plan.md)
+  SI: SI-03.11
+  Cenários novos: 5
+  ACs cobertos: todos (4)
+  ────────────────────────────────────────
+  Spec: videos-detail.plan.md (nestjs-project/specs/videos-detail.plan.md)
+  SI: SI-03.12
+  Cenários novos: 5
+  ACs cobertos: todos (3)
+  ────────────────────────────────────────
+  Spec: videos-playback.plan.md (nestjs-project/specs/videos-playback.plan.md)
+  SI: SI-03.14
+  Cenários novos: 6
+  ACs cobertos: todos (5)
+  ────────────────────────────────────────
+  Spec: videos-download.plan.md (nestjs-project/specs/videos-download.plan.md)
+  SI: SI-03.15
+  Cenários novos: 5
+  ACs cobertos: todos (3)
+
+  - Matriz de autorização:
+    - Todas as rotas de dono têm cenários para 401 sem token, 401 com token
+      expirado e 404 de corpo idêntico (deep equal) entre não-dono e id
+      inexistente, sem nunca devolver 403.
+    - O 400 para id que não é UUID também está coberto nessas rotas.
+    - Playback e download cobrem os 4 casos de autenticação opcional: anônimo,
+      não-dono, dono e token expirado.
+  - Catálogo de erros: todos os 9 códigos aparecem, inclusive 409, 413 e 422.
+  - Placeholders: nenhum _pending /plan-test-specs_ restou no plano. O diff do
+    plano só mexeu nas 7 linhas de **Test Specs:**.
+  - Ordem de edição: editei o plano antes de escrever as specs, para que as
+    specs fiquem mais novas que o plano. Assim o preflight do /implement não as
+    marca como desatualizadas.
+
+  Avisos (2):
+  1. SI-03.8, AC #2 sem cenário e2e. Esse AC usa 10 GiB com os valores padrão e
+     espera partSize 64 MiB e partCount 160. No e2e o teto de teste é 12 MiB,
+     então essa chamada retornaria 413. A fórmula já está coberta pelo teste
+     unitário de initiateUpload, que está na tabela de testes do SI.
+  2. Cenários vindos da matriz e do catálogo ligados ao AC mais próximo. Alguns
+     cenários vêm só da matriz ou do catálogo, porque os ACs do SI não os citam.
+     Como o formato Covers AC exige um número de AC, liguei cada um ao AC mais
+     próximo:
+     - 401 e 400 de UUID em part-urls, complete e DELETE estão ligados ao AC de
+       dono.
+     - CHANNEL_NOT_FOUND está ligado ao AC #1 de SI-03.8.
+
+  Duas decisões de setup que valem conferir:
+  - Nos testes de playback, download e thumbnail, o estado ready é montado
+    escrevendo direto no banco, porque o worker não sobe nesses testes. O fluxo
+    real até ready com o worker fica para o SI-03.20.
+  - Para o caso "Redis indisponível", o cenário força uma falha em queue.add com
+    um mock e verifica o Logger.error.
+
+  Pendência sua: não consigo rodar comandos internos do CLI, então o /export
+  precisa ser digitado por você: /export 18-plan-test-specs-phase-03.txt
+
+  Resumo para o líder (3 linhas):
+  W3c ok: 7 specs e2e de backend em nestjs-project/specs/ (SI-03.8–03.12, 03.14,
+  03.15), 42 cenários; plano sem nenhum _pending_; commit local f52a74d "docs:
+  phase 03 backend test specs".
+  Cobertura: 401 sem token e expirado, 404 idêntico não-dono/inexistente, 400
+  UUID, todo o Error Catalog (409/413/422 inclusos) e os 4 casos de
+  optional-auth em playback/download.
+  Avisos: SI-03.8 AC #2 (fórmula com 10 GiB) fica no unitário, pois o teto de
+  teste é 12 MiB; estado ready montado via banco nos specs de controller, o
+  fluxo real com worker fica no SI-03.20.
