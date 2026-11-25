@@ -8,28 +8,31 @@ import { ChannelsService } from '../channels/channels.service';
 import { Channel } from '../channels/entities/channel.entity';
 import queueConfig from '../config/queue.config';
 import storageConfig from '../config/storage.config';
+import videoConfig from '../config/video.config';
 import { VIDEO_PROCESSING_QUEUE } from '../queue/queue.constants';
 import { StorageService } from '../storage/storage.service';
 import { createTestDataSource } from '../test/create-test-data-source';
 import { User } from '../users/entities/user.entity';
 import { Video } from './entities/video.entity';
 import { VideosModule } from './videos.module';
+import { VideosService } from './videos.service';
 
 const ALL_ENTITIES = [User, Channel, RefreshToken, VerificationToken, Video];
 
 describe('VideosModule', () => {
-  it('should compile with its repository, channels lookup, storage and queue', async () => {
+  it('should compile with its service, repository, channels lookup, storage and queue', async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({
           isGlobal: true,
-          load: [storageConfig, queueConfig],
+          load: [storageConfig, queueConfig, videoConfig],
         }),
         TypeOrmModule.forRoot(createTestDataSource(ALL_ENTITIES).options),
         VideosModule,
       ],
     }).compile();
 
+    expect(moduleRef.get(VideosService)).toBeDefined();
     expect(moduleRef.get(getRepositoryToken(Video))).toBeDefined();
     expect(moduleRef.get(ChannelsService, { strict: false })).toBeDefined();
     expect(moduleRef.get(StorageService, { strict: false })).toBeDefined();

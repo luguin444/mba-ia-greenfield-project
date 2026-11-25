@@ -1,0 +1,197 @@
+import { randomUUID } from 'crypto';
+import { ConfigModule } from '@nestjs/config';
+import { Test, type TestingModule } from '@nestjs/testing';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { DataSource, IsNull, Not, Repository } from 'typeorm';
+import { RefreshToken } from '../auth/entities/refresh-token.entity';
+import { VerificationToken } from '../auth/entities/verification-token.entity';
+import { Channel } from '../channels/entities/channel.entity';
+import queueConfig from '../config/queue.config';
+import storageConfig from '../config/storage.config';
+import videoConfig from '../config/video.config';
+import { StorageService } from '../storage/storage.service';
+import {
+  cleanAllTables,
+  createTestDataSource,
+} from '../test/create-test-data-source';
+import { obliterateTestQueues } from '../test/queues';
+import { User } from '../users/entities/user.entity';
+import type { InitiateUploadDto } from './dto/initiate-upload.dto';
+import {
+  Video,
+  VideoProcessingStatus,
+  VideoPublicationStatus,
+} from './entities/video.entity';
+import * as publicIdUtil from './public-id.util';
+import { ActiveUploadLimitReachedException } from './videos.exceptions';
+import { VideosModule } from './videos.module';
+import { VideosService } from './videos.service';
+
+const ALL_ENTITIES = [User, Channel, RefreshToken, VerificationToken, Video];
+const MIB = 1024 * 1024;
+const MAX_ACTIVE_UPLOADS = 5;
+
+describe('VideosService (integration, Postgres + MinIO + Redis)', () => {
+  let moduleRef: TestingModule;
+  let service: VideosService;
+  let storage: StorageService;
+  let dataSource: DataSource;
+  let videoRepository: Repository<Video>;
+
+  async function createUserWithChannel(
+    label: string,
+  ): Promise<{ userId: string; channelId: string }> {
+    const user = await dataSource.getRepository(User).save({
+      email: `${label}-${randomUUID()}@example.com`,
+      password: 'hashed-password',
+      is_confirmed: true,
+    });
+    const channel = await dataSource.getRepository(Channel).save({
+      name: label,
+      nickname: `${label}-${randomUUID().slice(0, 8)}`,
+      user_id: user.id,
+    });
+    return { userId: user.id, channelId: channel.id };
+  }
+
+  function initiateDto(
+    overrides: Partial<InitiateUploadDto> = {},
+  ): InitiateUploadDto {
+    return {
+      fileName: 'clip.mp4',
+      sizeBytes: 10 * MIB,
+      mimeType: 'video/mp4',
+      ...overrides,
+    };
+  }
+
+  beforeAll(async () => {
+    moduleRef = await Test.createTestingModule({
+      imports: [
+        ConfigModule.forRoot({
+          isGlobal: true,
+          load: [videoConfig, storageConfig, queueConfig],
+        }),
+        TypeOrmModule.forRoot(createTestDataSource(ALL_ENTITIES).options),
+        VideosModule,
+      ],
+    }).compile();
+
+    service = moduleRef.get(VideosService);
+    storage = moduleRef.get(StorageService);
+    dataSource = moduleRef.get(DataSource);
+    videoRepository = dataSource.getRepository(Video);
+  }, 30000);
+
+  afterAll(async () => {
+    await cleanAllTables(dataSource);
+    await obliterateTestQueues(moduleRef);
+    await moduleRef.close();
+  });
+
+  beforeEach(async () => {
+    await cleanAllTables(dataSource);
+  });
+
+  afterEach(async () => {
+    jest.restoreAllMocks();
+    // Free the storage space of multipart uploads the test left open.
+    const open = await videoRepository.find({
+      where: { upload_id: Not(IsNull()) },
+    });
+    for (const video of open) {
+      await storage.abortMultipartUpload(
+        video.source_key,
+        video.upload_id as string,
+      );
+    }
+  });
+
+  describe('initiateUpload', () => {
+    it('should persist an uploading/draft row with upload_id and open an empty multipart upload', async () => {
+      const { userId, channelId } = await createUserWithChannel('owner');
+
+      const result = await service.initiateUpload(userId, initiateDto());
+
+      const row = await videoRepository.findOneByOrFail({
+        id: result.videoId,
+      });
+      expect(row).toMatchObject({
+        channel_id: channelId,
+        public_id: result.publicId,
+        processing_status: VideoProcessingStatus.UPLOADING,
+        publication_status: VideoPublicationStatus.DRAFT,
+        upload_id: result.uploadId,
+        upload_part_size_bytes: 5 * MIB,
+        size_bytes: 10 * MIB,
+        source_key: `${result.videoId}/source`,
+        title: 'clip',
+        failure_reason: null,
+      });
+      await expect(
+        storage.listAllParts(row.source_key, result.uploadId),
+      ).resolves.toEqual([]);
+    });
+
+    it('should reject ACTIVE_UPLOAD_LIMIT_REACHED once the channel has the maximum of uploading videos', async () => {
+      const { userId, channelId } = await createUserWithChannel('owner');
+      for (let i = 0; i < MAX_ACTIVE_UPLOADS; i++) {
+        await service.initiateUpload(userId, initiateDto());
+      }
+
+      await expect(
+        service.initiateUpload(userId, initiateDto()),
+      ).rejects.toBeInstanceOf(ActiveUploadLimitReachedException);
+      await expect(
+        videoRepository.countBy({ channel_id: channelId }),
+      ).resolves.toBe(MAX_ACTIVE_UPLOADS);
+    });
+
+    it('should let only one of two concurrent initiations through when one slot is left', async () => {
+      const { userId, channelId } = await createUserWithChannel('owner');
+      for (let i = 0; i < MAX_ACTIVE_UPLOADS - 1; i++) {
+        await service.initiateUpload(userId, initiateDto());
+      }
+
+      const results = await Promise.allSettled([
+        service.initiateUpload(userId, initiateDto()),
+        service.initiateUpload(userId, initiateDto()),
+      ]);
+
+      const fulfilled = results.filter((r) => r.status === 'fulfilled');
+      const rejected = results.filter(
+        (r): r is PromiseRejectedResult => r.status === 'rejected',
+      );
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect(rejected[0].reason).toBeInstanceOf(
+        ActiveUploadLimitReachedException,
+      );
+      await expect(
+        videoRepository.countBy({
+          channel_id: channelId,
+          processing_status: VideoProcessingStatus.UPLOADING,
+        }),
+      ).resolves.toBe(MAX_ACTIVE_UPLOADS);
+    });
+
+    it('should redo a colliding public_id inside a SAVEPOINT and finish the insert in the same transaction', async () => {
+      const { userId } = await createUserWithChannel('owner');
+      const existing = await service.initiateUpload(userId, initiateDto());
+      const generate = jest
+        .spyOn(publicIdUtil, 'generatePublicId')
+        .mockReturnValueOnce(existing.publicId);
+
+      const result = await service.initiateUpload(userId, initiateDto());
+
+      expect(generate).toHaveBeenCalledTimes(2);
+      expect(result.publicId).not.toBe(existing.publicId);
+      expect(result.publicId).toMatch(publicIdUtil.PUBLIC_ID_PATTERN);
+      const row = await videoRepository.findOneByOrFail({
+        id: result.videoId,
+      });
+      expect(row.public_id).toBe(result.publicId);
+      await expect(videoRepository.count()).resolves.toBe(2);
+    });
+  });
+});

@@ -4,6 +4,8 @@ import { ChannelsModule } from '../channels/channels.module';
 import { QueueModule } from '../queue/queue.module';
 import { StorageModule } from '../storage/storage.module';
 import { Video } from './entities/video.entity';
+import { VideosController } from './videos.controller';
+import { VideosService } from './videos.service';
 
 @Module({
   imports: [
@@ -12,5 +14,7 @@ import { Video } from './entities/video.entity';
     StorageModule,
     QueueModule,
   ],
+  controllers: [VideosController],
+  providers: [VideosService],
 })
 export class VideosModule {}

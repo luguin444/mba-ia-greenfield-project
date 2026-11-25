@@ -66,9 +66,20 @@ export class StorageService implements OnModuleDestroy {
     this.publicClient.destroy();
   }
 
-  async createMultipartUpload(key: string): Promise<string> {
+  /**
+   * `contentType` is applied by S3 to the completed object, so presigned GETs
+   * of the source answer with the declared `video/*` type.
+   */
+  async createMultipartUpload(
+    key: string,
+    contentType: string,
+  ): Promise<string> {
     const { UploadId } = await this.internalClient.send(
-      new CreateMultipartUploadCommand({ Bucket: this.videosBucket, Key: key }),
+      new CreateMultipartUploadCommand({
+        Bucket: this.videosBucket,
+        Key: key,
+        ContentType: contentType,
+      }),
     );
     if (!UploadId) {
       throw new Error(`Storage returned no UploadId for ${key}`);

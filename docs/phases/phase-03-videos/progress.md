@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 7/21 completed
+**SIs:** 8/21 completed
 
 ### SI-03.1 — Infra: dependências, namespaces de configuração e variáveis de ambiente
 - **Status:** completed
@@ -74,9 +74,16 @@
   - Every suite that loads `AppModule`/`VideosModule` leaves only the `test:video-processing:meta` and `test:video-maintenance:meta` hashes in Redis (written by `Queue` on connect; bullmq version, no jobs). Under the `test` prefix they never touch `bull:*`.
 
 ### SI-03.8 — Endpoint POST /videos/uploads
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 30 passing for the SI: `src/videos/videos.service.spec.ts` 17, `src/videos/videos.service.integration-spec.ts` 4, `test/videos-uploads.e2e-spec.ts` 8 (the 8 spec scenarios), `src/videos/videos.module.spec.ts` 1. Fallout re-run: `src/storage/storage.service.integration-spec.ts` 11/11
+- **Observations:**
+  - `StorageService.createMultipartUpload(key, contentType)` now sends `ContentType`, as the leader's plan fix asked. The 4 calls in `storage.service.integration-spec.ts` pass `'video/mp4'`.
+  - The `public_id` retry uses one SAVEPOINT per attempt (`video_public_id_N`), max 5, and retries only on `23505` whose `detail` names `(public_id)`. The unique-violation check is a local copy of the private helper in `ChannelsService`. Follow-up for the separate task the plan already names (the `ChannelsService` retry without SAVEPOINT): move the helper to a shared place and use it in both modules.
+  - When the insert fails, the multipart upload is aborted best-effort. If the abort also fails, it is logged at `warn` and the insert error is rethrown. The abort is only attempted for an insert failure, as the plan says. A commit failure after a successful insert would leave an orphan multipart upload (a rare edge case, not covered).
+  - `VideosModule` now registers `VideosController` + `VideosService`. `videos.module.spec.ts` loads `videoConfig` (needed by the service) and also checks `VideosService`.
+  - New e2e helper `test/support/videos-e2e.ts`, shared by the 5 video e2e suites of this block: app bootstrap with the `main.ts` globals, register → confirm → login (captures the token through the mail spy, like `auth.e2e-spec.ts`), expired token via `jwtService.sign(payload, { expiresIn: -60 })`, initiate, and a direct PUT to storage. Not in the plan's table, but it keeps the 5 suites from repeating ~80 lines each.
+  - The e2e suites leave aborted/open multipart uploads in `videos-test` (no row survives `cleanAllTables`). The integration suite aborts the uploads it opened in `afterEach`. The leftovers are bounded and test-only. Cleaning `videos-test` belongs to whoever adds a bucket lifecycle (out of scope).
+  - The `pg` warning "Calling client.query() when the client is already executing a query" predates this SI: `channels.service.integration-spec.ts` and `videos.module.spec.ts` print it too. It comes from TypeORM `synchronize` in the test DataSource.
 
 ### SI-03.9 — Endpoint POST /videos/:id/upload/part-urls
 - **Status:** pending

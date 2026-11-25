@@ -74,7 +74,7 @@ describe('StorageService (integration, MinIO)', () => {
 
   it('should complete a multipart upload made of PUTs to presigned part URLs', async () => {
     const key = newKey();
-    const uploadId = await storage.createMultipartUpload(key);
+    const uploadId = await storage.createMultipartUpload(key, 'video/mp4');
     openUploads.push({ key, uploadId });
     const first = bytes(MIN_PART_SIZE, 1);
     const last = bytes(1234, 2);
@@ -110,7 +110,7 @@ describe('StorageService (integration, MinIO)', () => {
 
   it('should list no parts for a freshly created multipart upload', async () => {
     const key = newKey();
-    const uploadId = await storage.createMultipartUpload(key);
+    const uploadId = await storage.createMultipartUpload(key, 'video/mp4');
     openUploads.push({ key, uploadId });
 
     await expect(storage.listAllParts(key, uploadId)).resolves.toEqual([]);
@@ -118,7 +118,7 @@ describe('StorageService (integration, MinIO)', () => {
 
   it('should tolerate aborting an upload that was already aborted', async () => {
     const key = newKey();
-    const uploadId = await storage.createMultipartUpload(key);
+    const uploadId = await storage.createMultipartUpload(key, 'video/mp4');
 
     await storage.abortMultipartUpload(key, uploadId);
 
@@ -129,7 +129,7 @@ describe('StorageService (integration, MinIO)', () => {
 
   it('should sign every client-facing URL for the public endpoint', async () => {
     const key = newKey();
-    const uploadId = await storage.createMultipartUpload(key);
+    const uploadId = await storage.createMultipartUpload(key, 'video/mp4');
     openUploads.push({ key, uploadId });
 
     const partUrl = await storage.presignUploadPart(
