@@ -192,10 +192,15 @@ Finishes the multipart upload, verifies the size and enqueues processing (per `p
 1. Owner + `processing_status = 'uploading'` check.
 2. `ListParts`: if any part in `1..partCount` is missing, reject with `UPLOAD_INCOMPLETE`. The video stays `uploading` and is resumable.
 3. If the sum of the listed part sizes ≠ `size_bytes`, reject with `UPLOAD_SIZE_MISMATCH`. The video stays `uploading`, so the client can re-PUT a part or abort.
-4. `CompleteMultipartUpload` with the parts sorted ascending by `PartNumber`.
+4. `CompleteMultipartUpload` with the parts sorted ascending by `PartNumber`. Concurrency: if it fails with `NoSuchUpload` (a concurrent `complete`/abort/sweep already consumed the upload), re-read the row. If it is no longer `uploading`, reject with `INVALID_VIDEO_STATE` (409), not a 500. The step-6 transition is a conditional update (`WHERE id = :id AND processing_status = 'uploading'`). If it affects 0 rows, the answer is also `INVALID_VIDEO_STATE`.
 5. `HeadObject` on `source_key` (backstop). If `ContentLength` ≠ `size_bytes` or > `VIDEO_MAX_UPLOAD_BYTES`, call `DeleteObject`, set `processing_status = 'failed'`, `failure_reason = 'UPLOAD_SIZE_MISMATCH'`, `upload_id = null`, and reject with `UPLOAD_SIZE_MISMATCH`.
 6. Set `processing_status = 'processing'`, `upload_id = null`, and commit.
 7. After the commit, enqueue `process-video` (see Events/Messages). If the enqueue throws, the error is logged and **swallowed**, and the response is still 202. The row is already `processing`, and the maintenance sweep re-enqueues it (non-transactional dual write covered per `phase-03-videos/TD-01`, `phase-03-videos/TD-12`).
+   **Deliberate exception to `.claude/rules/nestjs-services.md` ("catch must end with a throw").** This falls under the rule's own carve-out of converting an error into a valid domain result. The state change is already committed and cannot be retried by the client, because a second `complete` answers `INVALID_VIDEO_STATE`. Rethrowing would report a 500 for an upload that actually succeeded. Requirements:
+   - log at `error` level, with `videoId`;
+   - put a code comment at the catch that cites this spec;
+   - add a unit test proving the 202 + log on enqueue failure;
+   - add an integration test proving the sweep re-enqueues the orphaned row.
 
 **Response 202:** `VideoResponse` with `processingStatus: 'processing'`.
 
@@ -464,7 +469,17 @@ New env keys, validated by `src/config/env.validation.ts` (Joi, inherited conven
 | VIDEO_SWEEP_INTERVAL_MS | `video.config.ts` | number, integer, min 1000 | `900000` | `900000` |
 | VIDEO_UPLOAD_STALE_AFTER_MS | `video.config.ts` | number, integer, min 60000 | `86400000` | `86400000` |
 
-Tests reuse the production code path with small values, e.g. `VIDEO_MAX_UPLOAD_BYTES=12582912` (12 MiB) and `VIDEO_UPLOAD_PART_SIZE_BYTES=5242880` (5 MiB), plus test-scoped buckets and queue prefix (per `phase-03-videos/TD-06`, `phase-03-videos/TD-14`). The override mechanism (env set before module compile vs config provider override) is an SI-level choice.
+Tests reuse the production code path with small values, e.g. `VIDEO_MAX_UPLOAD_BYTES=12582912` (12 MiB) and `VIDEO_UPLOAD_PART_SIZE_BYTES=5242880` (5 MiB), plus test-scoped buckets and queue prefix (per `phase-03-videos/TD-06`, `phase-03-videos/TD-14`).
+
+**Test environment isolation (decided at leader gate G3a, not an SI-level choice).** Both Jest configs (`package.json` → `jest.setupFiles` and `test/jest-e2e.json` → `setupFiles`) load `dotenv/config`, i.e. the **same `.env` the containers use**. Without an override, the test process and the running `video-worker` container share `QUEUE_PREFIX=bull`: the container would consume jobs enqueued by tests (and process them against the production bucket names), and the test-booted `WorkerModule` would consume dev jobs. Mechanism:
+- A setup file `src/test/setup-test-env.ts` is appended **after** `dotenv/config` in both `setupFiles` arrays. It force-assigns `process.env` before any module is compiled, so the real `registerAs` + Joi path runs unchanged (no config-provider override):
+  - `QUEUE_PREFIX=test`;
+  - `S3_VIDEOS_BUCKET=videos-test`, `S3_THUMBNAILS_BUCKET=thumbnails-test` (created by `minio-init`);
+  - `VIDEO_MAX_UPLOAD_BYTES=12582912`, `VIDEO_UPLOAD_PART_SIZE_BYTES=5242880`.
+  
+  Individual suites may still set narrower values (e.g. `VIDEO_MAX_ACTIVE_UPLOADS_PER_CHANNEL`) before compiling their module.
+- Queue cleanup per suite: `obliterate({ force: true })` on the `test`-prefixed queues in `afterAll`, then close queues/workers so Jest exits without open handles.
+- Known residual: Postgres stays shared between dev and tests (existing project model). The container's maintenance sweep only touches rows past the stale/grace thresholds (24 h / 15 min), and suites wipe `videos` via `cleanAllTables`, so test rows never live long enough to be swept.
 
 **Compose (`nestjs-project/compose.yaml`)** — host keys use service names, with the single exception below (per `phase-03-videos/TD-02`, `phase-03-videos/TD-08`, `phase-03-videos/TD-14`, `phase-03-videos/TD-16`):
 - `Dockerfile.dev`: `apt install -y … ffmpeg` (provides `ffprobe`). Shared by `nestjs-api` and `video-worker`, so it needs a one-time `docker compose build`.
