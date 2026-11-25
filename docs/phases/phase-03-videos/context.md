@@ -3,7 +3,7 @@ kind: phase
 name: phase-03-videos
 sources_mtime:
   docs/project-plan.md: "2026-10-28T19:33:34-03:00"
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-11-24T21:09:01-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-11-24T23:28:59-03:00"
   docs/decisions/technical-decisions-openapi-docs-nestjs.md: "2026-10-28T19:33:34-03:00"
   docs/phases/phase-01-configuracao-base/context.md: "2026-10-28T19:33:34-03:00"
   docs/phases/phase-02-auth/context.md: "2026-10-28T19:33:34-03:00"
@@ -84,6 +84,7 @@ _Source files:_
 ### phase-03-videos/TD-01
 
 **Recommendation:** It is the only option where retries, exponential backoff, `jobId` dedup and failed-job inspection come from the official Nest integration without custom plumbing, and it matches the diagram's separate queue container. The real cost is the non-transactional enqueue: it is covered by an idempotent `jobId = videoId` plus a periodic reconciliation (TD-12). pg-boss (B) is the honest runner-up if the team prefers zero new infrastructure and transactional enqueue over Nest-native ergonomics.
+**Note:** Pre-implementation review (2026-11-24): in `bullmq@6.7.10`, `ioredis` is an **optional** peer dependency (`npm view bullmq@6.7.10 peerDependenciesMeta`), so npm does not install it and BullMQ fails with "could not load the optional 'ioredis' package". `ioredis` is pinned explicitly alongside `bullmq` (see `library-refs.md`). By design, producers' `add` waits while Redis is unreachable (bullmq docs, "Failing fast when Redis is down"). The API bounds the post-commit enqueue with a timeout instead of `enableOfflineQueue: false`, because the connection is shared with the worker.
 **Libraries:** bullmq, @nestjs/bullmq
 
 ### phase-03-videos/TD-02
@@ -104,6 +105,7 @@ _Source files:_
 ### phase-03-videos/TD-05
 
 **Recommendation:** It is the only option where no service other than the object store touches video bytes, and resumability comes from `ListParts`. The draft-on-initiate and enqueue-on-complete hooks are plain API endpoints that follow the existing JWT/envelope conventions. tus (B) buys finer-grained resume at the price of an extra data-path service and a hook contract. Note on the strict-BFF rule: the browser talks to **storage** (presigned URLs), never to the Nest API, which is the carve-out `next-frontend-config-base/TD-03` already anticipated.
+**Note:** Pre-implementation review (2026-11-24): the draft row created on initiate also carries a `title`. The challenge's "Persistência" requirement lists title among the minimum video fields. `title` is optional on initiate and defaults to the `fileName` without its extension (or the whole `fileName` when that is empty). Editing it belongs to Phase 04 ("Edição das informações do vídeo").
 **Libraries:** @aws-sdk/client-s3, @aws-sdk/s3-request-presigner
 
 ### phase-03-videos/TD-06
@@ -119,6 +121,9 @@ _Source files:_
 ### phase-03-videos/TD-08
 
 **Recommendation:** It is the only option verified to run today that keeps the documented MinIO target, with no build tooling. The application code talks plain S3 (`@aws-sdk/client-s3`, `forcePathStyle`), so moving to B, C or real S3 later is a compose change, not a code change.
+**Note:** Pre-implementation review (2026-11-24), verified against the cached images:
+- `cgr.dev/chainguard/minio-client` has `mc` as its entrypoint and no `sh`, so it cannot run a multi-step init. `cgr.dev/chainguard/minio` ships both `sh` and `mc`, so the one-shot `minio-init` runs from the `minio` image (same digest) with `sh -c`. `minio-client` is not used.
+- `mc cors set` fails with "not implemented" on this MinIO build, so no per-bucket CORS is configured. MinIO's default CORS already exposes `ETag` (`Access-Control-Expose-Headers`); `MINIO_API_CORS_ALLOW_ORIGIN` remains available if origins ever need narrowing.
 **Libraries:** —
 
 ### phase-03-videos/TD-09
@@ -148,6 +153,13 @@ _Source files:_
 - **Considered alternative: `@nestjs/schedule` `@Cron`** (`@nestjs/schedule@12.0.4`, peers `@nestjs/core ^11||^12`). The cron is registered in-process at `onApplicationBootstrap` (Nest docs, `techniques/task-scheduling`), so every process that imports `ScheduleModule` runs its own timer, and multiple worker replicas would sweep concurrently unless a lock is added. It is also one more dependency for something the queue already provides. Rejected.
 - **Dependency:** valid if TD-01 = A. If TD-01 = B (pg-boss), this mechanism must be re-researched against pg-boss's own scheduling.
 
+**Note:** Pre-implementation review (2026-11-24): mapping to the challenge's status cycle "rascunho → processando → pronto/erro":
+- rascunho = `publication_status = 'draft'` + `processing_status = 'uploading'`;
+- processando = `processing`;
+- pronto = `ready`;
+- erro = `failed` (with `failure_reason`).
+
+The video stays `draft` on the publication axis through the whole phase. This mapping must be stated in the Data Model and in the videos section of `nestjs-project/CLAUDE.md`.
 **Libraries:** bullmq, @nestjs/bullmq
 
 ### phase-03-videos/TD-13
@@ -171,6 +183,7 @@ _Source files:_
 
 **Exception to root `CLAUDE.md` "Docker Networking" (to be recorded there at implementation time):** `S3_PUBLIC_ENDPOINT` is the one key allowed a `*.localhost` host. Inside containers it is a **Compose network alias of the storage service**, resolved by Docker DNS to that service, never to the container's own loopback, so the rule's intent (never point a container at itself) holds. It exists only because presigned URLs must be signed for a host that is also valid in the browser. Every other host key (DB, Redis, `S3_ENDPOINT`) keeps the service name.
 
+**Note:** Pre-implementation review (2026-11-24): curl (≥ 7.78) hard-codes `*.localhost` to 127.0.0.1 even **inside** containers, so `curl http://minio.localhost:9000` from `nestjs-api` hits the container itself (connection refused). Node (`fetch`/`dns.lookup`) and `getent` resolve the Docker alias correctly, and so does the app's AWS SDK. In-container checks of this host therefore use `node -e "fetch(...)"` or `mc ready` inside the `minio` service, never curl. From the host, curl works as intended.
 **Libraries:** —
 
 ## Inherited Decisions Detail
