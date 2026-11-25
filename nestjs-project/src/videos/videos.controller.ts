@@ -22,6 +22,7 @@ import { InitiateUploadResponseDto } from './dto/initiate-upload-response.dto';
 import { InitiateUploadDto } from './dto/initiate-upload.dto';
 import { PartUrlsResponseDto } from './dto/part-urls-response.dto';
 import { PartUrlsDto } from './dto/part-urls.dto';
+import { VideoResponseDto } from './dto/video-response.dto';
 import { VideosService } from './videos.service';
 
 const ERROR_SCHEMA = { $ref: getSchemaPath(ApiErrorEnvelope) };
@@ -118,5 +119,52 @@ export class VideosController {
     @Body() dto: PartUrlsDto,
   ): Promise<PartUrlsResponseDto> {
     return this.videosService.signPartUrls(id, user.sub, dto);
+  }
+
+  @Post(':id/upload/complete')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Complete a video upload',
+    description:
+      'Closes the multipart upload from the parts stored in storage (no body; client ETags are not needed), checks every part size against the declared size, moves the video to `processing` and enqueues background processing.',
+  })
+  @ApiResponse({
+    status: 202,
+    description: 'Upload completed; processing queued',
+    type: VideoResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Validation failed (id is not a uuid)',
+    schema: ERROR_SCHEMA,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Missing or invalid access token',
+    schema: ERROR_SCHEMA,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Video not found or not owned by the caller (VIDEO_NOT_FOUND)',
+    schema: ERROR_SCHEMA,
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'The video is not uploading (INVALID_VIDEO_STATE), or parts are missing (UPLOAD_INCOMPLETE)',
+    schema: ERROR_SCHEMA,
+  })
+  @ApiResponse({
+    status: 422,
+    description:
+      'Stored part or object sizes do not match the declared size (UPLOAD_SIZE_MISMATCH)',
+    schema: ERROR_SCHEMA,
+  })
+  async completeUpload(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<VideoResponseDto> {
+    return this.videosService.completeUpload(id, user.sub);
   }
 }

@@ -1,7 +1,9 @@
 import { randomUUID } from 'crypto';
+import { InjectQueue } from '@nestjs/bullmq';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
+import type { Queue } from 'bullmq';
 import {
   DataSource,
   EntityManager,
@@ -9,20 +11,36 @@ import {
   Repository,
 } from 'typeorm';
 import { ChannelsService } from '../channels/channels.service';
+import storageConfig from '../config/storage.config';
 import videoConfig from '../config/video.config';
-import { StorageService } from '../storage/storage.service';
+import {
+  PROCESS_VIDEO_JOB,
+  VIDEO_PROCESSING_QUEUE,
+  processVideoJobOptions,
+  type ProcessVideoJobData,
+} from '../queue/queue.constants';
+import { MultipartUploadNotFoundError } from '../storage/storage.errors';
+import {
+  StorageService,
+  type CompletedPart,
+  type UploadedPart,
+} from '../storage/storage.service';
 import type { InitiateUploadResponseDto } from './dto/initiate-upload-response.dto';
 import type { InitiateUploadDto } from './dto/initiate-upload.dto';
 import type { PartUrlDto } from './dto/part-url.dto';
 import type { PartUrlsResponseDto } from './dto/part-urls-response.dto';
 import type { PartUrlsDto } from './dto/part-urls.dto';
+import type { VideoResponseDto } from './dto/video-response.dto';
 import {
   Video,
+  VideoFailureReason,
   VideoProcessingStatus,
   VideoPublicationStatus,
 } from './entities/video.entity';
 import { generatePublicId } from './public-id.util';
+import { toVideoResponse } from './video-response.mapper';
 import {
+  ENQUEUE_TIMEOUT_MS,
   MAX_PUBLIC_ID_ATTEMPTS,
   MAX_SIGNED_PARTS_PER_BATCH,
   MAX_UPLOAD_PARTS,
@@ -32,6 +50,8 @@ import {
   ChannelNotFoundException,
   InvalidPartNumberException,
   InvalidVideoStateException,
+  UploadIncompleteException,
+  UploadSizeMismatchException,
   VideoNotFoundException,
   VideoTooLargeException,
 } from './videos.exceptions';
@@ -85,6 +105,10 @@ export class VideosService {
     private readonly storageService: StorageService,
     @Inject(videoConfig.KEY)
     private readonly config: ConfigType<typeof videoConfig>,
+    @Inject(storageConfig.KEY)
+    private readonly storageCfg: ConfigType<typeof storageConfig>,
+    @InjectQueue(VIDEO_PROCESSING_QUEUE)
+    private readonly processingQueue: Queue,
   ) {}
 
   async initiateUpload(
@@ -210,6 +234,147 @@ export class VideosService {
       parts,
       expiresAt,
     };
+  }
+
+  /**
+   * Closes the multipart upload, checks the stored size and moves the video
+   * to `processing`. The processing job is enqueued after that update.
+   */
+  async completeUpload(id: string, userId: string): Promise<VideoResponseDto> {
+    const video = await this.findOwnedOrFail(id, userId);
+    this.assertUploading(video);
+
+    const stored = await this.storageService.listAllParts(
+      video.source_key,
+      video.upload_id,
+    );
+    const parts = this.expectedParts(video, stored);
+    try {
+      await this.storageService.completeMultipartUpload(
+        video.source_key,
+        video.upload_id,
+        parts,
+      );
+    } catch (error) {
+      // A concurrent complete/abort/sweep already consumed the upload. Whether
+      // or not that change has committed yet, this call cannot proceed.
+      if (error instanceof MultipartUploadNotFoundError) {
+        throw new InvalidVideoStateException();
+      }
+      throw error;
+    }
+
+    await this.assertStoredObjectSize(video);
+    const transition = await this.videoRepository.update(
+      { id: video.id, processing_status: VideoProcessingStatus.UPLOADING },
+      { processing_status: VideoProcessingStatus.PROCESSING, upload_id: null },
+    );
+    if (!transition.affected) throw new InvalidVideoStateException();
+
+    await this.enqueueProcessing(video.id);
+    return this.toResponse(await this.reload(video.id));
+  }
+
+  /**
+   * Every part in `1..partCount` must be stored with its exact size: `partSize`
+   * for all but the last, the remainder for the last (which also pins the
+   * sum). S3 would reject parts under 5 MiB with `EntityTooSmall`, a 500.
+   */
+  private expectedParts(
+    video: UploadingVideo,
+    stored: UploadedPart[],
+  ): CompletedPart[] {
+    const { partSize, partCount } = this.layoutOf(video);
+    const byNumber = new Map(stored.map((part) => [part.partNumber, part]));
+    const missing = this.missingPartNumbers(
+      new Set(byNumber.keys()),
+      partCount,
+    );
+    if (missing.length > 0) throw new UploadIncompleteException(missing);
+
+    const lastPartSize = video.size_bytes - (partCount - 1) * partSize;
+    const parts: CompletedPart[] = [];
+    for (let partNumber = 1; partNumber <= partCount; partNumber++) {
+      const part = byNumber.get(partNumber) as UploadedPart;
+      const expectedSize = partNumber < partCount ? partSize : lastPartSize;
+      if (part.size !== expectedSize) throw new UploadSizeMismatchException();
+      parts.push({ partNumber, eTag: part.eTag });
+    }
+    return parts;
+  }
+
+  /** Backstop after complete: a wrong object is deleted and the video fails. */
+  private async assertStoredObjectSize(video: UploadingVideo): Promise<void> {
+    const bucket = this.storageCfg.videosBucket;
+    const head = await this.storageService.headObject(bucket, video.source_key);
+    if (
+      head &&
+      head.contentLength === video.size_bytes &&
+      head.contentLength <= this.config.maxUploadBytes
+    ) {
+      return;
+    }
+    await this.storageService.deleteObject(bucket, video.source_key);
+    await this.videoRepository.update(
+      { id: video.id, processing_status: VideoProcessingStatus.UPLOADING },
+      {
+        processing_status: VideoProcessingStatus.FAILED,
+        failure_reason: VideoFailureReason.UPLOAD_SIZE_MISMATCH,
+        upload_id: null,
+      },
+    );
+    throw new UploadSizeMismatchException();
+  }
+
+  private async enqueueProcessing(videoId: string): Promise<void> {
+    const data: ProcessVideoJobData = { videoId };
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`Timed out after ${ENQUEUE_TIMEOUT_MS} ms`)),
+        ENQUEUE_TIMEOUT_MS,
+      );
+    });
+    try {
+      await Promise.race([
+        this.processingQueue.add(
+          PROCESS_VIDEO_JOB,
+          data,
+          processVideoJobOptions(videoId),
+        ),
+        timeout,
+      ]);
+    } catch (error) {
+      // Deliberate exception to .claude/rules/nestjs-services.md ("catch must
+      // end with a throw"), documented in docs/phases/phase-03-videos/
+      // phase-03-videos.md → ### API Contracts →
+      // #### POST /videos/:id/upload/complete, step 7. The `processing` state
+      // is already committed and a second `complete` answers 409, so a
+      // rethrow would report a 500 for an upload that succeeded. The
+      // maintenance sweep re-enqueues orphaned `processing` rows.
+      this.logger.error(
+        `Could not enqueue ${PROCESS_VIDEO_JOB} for video ${videoId}; the maintenance sweep will re-enqueue it`,
+        error instanceof Error ? error.stack : String(error),
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private async reload(id: string): Promise<Video> {
+    const video = await this.videoRepository.findOne({ where: { id } });
+    if (!video) throw new VideoNotFoundException();
+    return video;
+  }
+
+  private toResponse(video: Video): VideoResponseDto {
+    const thumbnailUrl = video.thumbnail_key
+      ? this.storageService.publicObjectUrl(
+          this.storageCfg.thumbnailsBucket,
+          video.thumbnail_key,
+        )
+      : null;
+    return toVideoResponse(video, thumbnailUrl);
   }
 
   /**

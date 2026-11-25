@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 9/21 completed
+**SIs:** 10/21 completed
 
 ### SI-03.1 — Infra: dependências, namespaces de configuração e variáveis de ambiente
 - **Status:** completed
@@ -94,9 +94,16 @@
   - `updated_at` is touched with `update({ id, processing_status: 'uploading' }, { updated_at: () => 'CURRENT_TIMESTAMP' })`. It uses the DB clock, like the column default, so no app/DB clock skew. It runs after the presign, so a failed presign does not count as activity.
 
 ### SI-03.10 — Endpoint POST /videos/:id/upload/complete
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 25 new, passing for the SI: `src/videos/videos.service.spec.ts` +11 (37 total), `src/videos/videos.service.integration-spec.ts` +3 (10 total), `test/videos-upload-complete.e2e-spec.ts` 7 (the 7 spec scenarios), `src/storage/storage.service.integration-spec.ts` +1 (13 total). Re-run: `src/videos` + `src/storage` 91/91, uploads + part-urls + complete e2e 22/22
+- **Observations:**
+  - **Storage extensions:** `headObject` now returns `{ contentLength, contentType }`. The integration test checks `ContentType = mime_type` (`video/webm` → `video/webm`), and the SI-03.5 assertion was updated. `completeMultipartUpload` maps S3 `NoSuchUpload` to a new storage error, `MultipartUploadNotFoundError` (`src/storage/storage.errors.ts`). The videos service maps that error to `InvalidVideoStateException`, so the domain never inspects S3 SDK error names. A new storage integration test proves the mapping against MinIO (complete after abort).
+  - **Plan wording, no behavior change:** API Contracts step 4 says to "re-read the row" after `NoSuchUpload`, but both outcomes (row no longer `uploading`, or still `uploading`) answer `INVALID_VIDEO_STATE`. The re-read would not change the response, so it was not implemented. The SI's Technical action 2 ("em NoSuchUpload, lança InvalidVideoStateException") is followed as written. The unit test covers `NoSuchUpload` → 409 with no update and no enqueue. Since there is no re-read, "row already out of `uploading`" and "row still `uploading`" are the same code path.
+  - Per-part size check before `CompleteMultipartUpload`: parts `1..partCount-1` must be exactly `partSize`, and the last part must be `size_bytes − (partCount − 1) × partSize`. Any other size → `422`, and the row stays `uploading`. Parts listed above `partCount` (the API never signs them) are left out of the complete call.
+  - HeadObject backstop: if the object is missing, has the wrong size, or is over the max → `deleteObject`, a conditional update to `failed`/`UPLOAD_SIZE_MISMATCH`/`upload_id = null`, then `422`.
+  - Enqueue: `Promise.race` between `queue.add(...)` and a 3 s timer (`ENQUEUE_TIMEOUT_MS` in `videos.constants.ts`). The timer is cleared in `finally`. `Promise.race` subscribes to `add`, so a late rejection is not left unhandled. The `catch` calls `logger.error` (message with `videoId`, plus the stack) and has a comment citing the plan section. The e2e "Redis not answering" case answers `202` in ~3.1 s.
+  - The spec's integration test "sweep re-enqueues the orphaned row" belongs to SI-03.19 (maintenance sweep), not this SI.
+  - `toResponse(video)` (`toVideoResponse` + `thumbnailUrl` via `publicObjectUrl` when `thumbnail_key` is set) was added here, because the `202` body is a `VideoResponse`. SI-03.12 reuses it and owns its unit test.
 
 ### SI-03.11 — Endpoint DELETE /videos/:id/upload
 - **Status:** pending

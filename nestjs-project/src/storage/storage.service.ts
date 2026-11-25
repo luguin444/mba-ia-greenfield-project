@@ -17,6 +17,7 @@ import { Inject, Injectable, type OnModuleDestroy } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
 import storageConfig from '../config/storage.config';
 import { S3_INTERNAL_CLIENT, S3_PUBLIC_CLIENT } from './storage.constants';
+import { MultipartUploadNotFoundError } from './storage.errors';
 
 export interface UploadedPart {
   partNumber: number;
@@ -31,6 +32,7 @@ export interface CompletedPart {
 
 export interface ObjectHead {
   contentLength: number;
+  contentType: string | null;
 }
 
 export interface PresignGetObjectOptions {
@@ -111,25 +113,33 @@ export class StorageService implements OnModuleDestroy {
     return parts;
   }
 
+  /** Throws `MultipartUploadNotFoundError` when the upload is already gone. */
   async completeMultipartUpload(
     key: string,
     uploadId: string,
     parts: CompletedPart[],
   ): Promise<void> {
     const ordered = [...parts].sort((a, b) => a.partNumber - b.partNumber);
-    await this.internalClient.send(
-      new CompleteMultipartUploadCommand({
-        Bucket: this.videosBucket,
-        Key: key,
-        UploadId: uploadId,
-        MultipartUpload: {
-          Parts: ordered.map((part) => ({
-            PartNumber: part.partNumber,
-            ETag: part.eTag,
-          })),
-        },
-      }),
-    );
+    try {
+      await this.internalClient.send(
+        new CompleteMultipartUploadCommand({
+          Bucket: this.videosBucket,
+          Key: key,
+          UploadId: uploadId,
+          MultipartUpload: {
+            Parts: ordered.map((part) => ({
+              PartNumber: part.partNumber,
+              ETag: part.eTag,
+            })),
+          },
+        }),
+      );
+    } catch (error) {
+      if (isS3Error(error, 'NoSuchUpload')) {
+        throw new MultipartUploadNotFoundError(key, uploadId);
+      }
+      throw error;
+    }
   }
 
   /** Idempotent: an upload that is already gone (`NoSuchUpload`) is not an error. */
@@ -153,7 +163,10 @@ export class StorageService implements OnModuleDestroy {
       const head = await this.internalClient.send(
         new HeadObjectCommand({ Bucket: bucket, Key: key }),
       );
-      return { contentLength: head.ContentLength ?? 0 };
+      return {
+        contentLength: head.ContentLength ?? 0,
+        contentType: head.ContentType ?? null,
+      };
     } catch (error) {
       if (isS3Error(error, 'NotFound', 'NoSuchKey')) return null;
       throw error;

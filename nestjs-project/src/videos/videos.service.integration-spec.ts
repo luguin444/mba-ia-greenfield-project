@@ -1,7 +1,9 @@
 import { randomUUID } from 'crypto';
+import { getQueueToken } from '@nestjs/bullmq';
 import { ConfigModule } from '@nestjs/config';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import type { Queue } from 'bullmq';
 import { DataSource, IsNull, Not, Repository } from 'typeorm';
 import { RefreshToken } from '../auth/entities/refresh-token.entity';
 import { VerificationToken } from '../auth/entities/verification-token.entity';
@@ -9,6 +11,10 @@ import { Channel } from '../channels/entities/channel.entity';
 import queueConfig from '../config/queue.config';
 import storageConfig from '../config/storage.config';
 import videoConfig from '../config/video.config';
+import {
+  PROCESS_VIDEO_JOB,
+  VIDEO_PROCESSING_QUEUE,
+} from '../queue/queue.constants';
 import { StorageService } from '../storage/storage.service';
 import {
   cleanAllTables,
@@ -25,6 +31,7 @@ import {
 import * as publicIdUtil from './public-id.util';
 import {
   ActiveUploadLimitReachedException,
+  UploadSizeMismatchException,
   VideoNotFoundException,
 } from './videos.exceptions';
 import { VideosModule } from './videos.module';
@@ -49,6 +56,7 @@ describe('VideosService (integration, Postgres + MinIO + Redis)', () => {
   let storage: StorageService;
   let dataSource: DataSource;
   let videoRepository: Repository<Video>;
+  let processingQueue: Queue;
 
   async function createUserWithChannel(
     label: string,
@@ -93,6 +101,9 @@ describe('VideosService (integration, Postgres + MinIO + Redis)', () => {
     storage = moduleRef.get(StorageService);
     dataSource = moduleRef.get(DataSource);
     videoRepository = dataSource.getRepository(Video);
+    processingQueue = moduleRef.get<Queue>(
+      getQueueToken(VIDEO_PROCESSING_QUEUE),
+    );
   }, 30000);
 
   afterAll(async () => {
@@ -263,6 +274,81 @@ describe('VideosService (integration, Postgres + MinIO + Redis)', () => {
         id: initiated.videoId,
       });
       expect(after.updated_at).toEqual(before.updated_at);
+    });
+  });
+
+  describe('completeUpload', () => {
+    it('should complete the object with ContentType = mime_type, move the row to processing and enqueue process-video with jobId = videoId', async () => {
+      const { userId } = await createUserWithChannel('owner');
+      const initiated = await service.initiateUpload(
+        userId,
+        initiateDto({ sizeBytes: 10 * MIB, mimeType: 'video/webm' }),
+      );
+      await putPart(initiated.parts[1].url, 5 * MIB);
+      await putPart(initiated.parts[0].url, 5 * MIB);
+
+      const result = await service.completeUpload(initiated.videoId, userId);
+
+      expect(result.processingStatus).toBe(VideoProcessingStatus.PROCESSING);
+      const row = await videoRepository.findOneByOrFail({
+        id: initiated.videoId,
+      });
+      expect(row.processing_status).toBe(VideoProcessingStatus.PROCESSING);
+      expect(row.upload_id).toBeNull();
+      await expect(
+        storage.headObject('videos-test', row.source_key),
+      ).resolves.toEqual({
+        contentLength: 10 * MIB,
+        contentType: 'video/webm',
+      });
+
+      const job = await processingQueue.getJob(initiated.videoId);
+      expect(job?.name).toBe(PROCESS_VIDEO_JOB);
+      expect(job?.data).toEqual({ videoId: initiated.videoId });
+      expect(processingQueue.opts.prefix).toBe('test');
+    });
+
+    it('should reject UPLOAD_SIZE_MISMATCH when the stored parts add up to less than sizeBytes, keeping the row uploading', async () => {
+      const { userId } = await createUserWithChannel('owner');
+      const initiated = await service.initiateUpload(
+        userId,
+        initiateDto({ sizeBytes: 2048 }),
+      );
+      await putPart(initiated.parts[0].url, 1024);
+
+      await expect(
+        service.completeUpload(initiated.videoId, userId),
+      ).rejects.toBeInstanceOf(UploadSizeMismatchException);
+
+      const row = await videoRepository.findOneByOrFail({
+        id: initiated.videoId,
+      });
+      expect(row.processing_status).toBe(VideoProcessingStatus.UPLOADING);
+      expect(row.upload_id).toBe(initiated.uploadId);
+      expect(row.failure_reason).toBeNull();
+      await expect(
+        processingQueue.getJob(initiated.videoId),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should reject UPLOAD_SIZE_MISMATCH (never a storage 500) for parts of 4 MiB + 6 MiB in a 10 MiB upload', async () => {
+      const { userId } = await createUserWithChannel('owner');
+      const initiated = await service.initiateUpload(
+        userId,
+        initiateDto({ sizeBytes: 10 * MIB }),
+      );
+      await putPart(initiated.parts[0].url, 4 * MIB);
+      await putPart(initiated.parts[1].url, 6 * MIB);
+
+      await expect(
+        service.completeUpload(initiated.videoId, userId),
+      ).rejects.toBeInstanceOf(UploadSizeMismatchException);
+
+      const row = await videoRepository.findOneByOrFail({
+        id: initiated.videoId,
+      });
+      expect(row.processing_status).toBe(VideoProcessingStatus.UPLOADING);
+      expect(row.upload_id).toBe(initiated.uploadId);
     });
   });
 });

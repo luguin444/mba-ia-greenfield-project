@@ -6,3 +6,10 @@ export const MAX_UPLOAD_PARTS = 10000;
 
 /** Attempts to insert a video with a fresh `public_id` on a unique collision. */
 export const MAX_PUBLIC_ID_ATTEMPTS = 5;
+
+/**
+ * Upper bound for enqueueing `process-video` after `complete` commits. BullMQ's
+ * `add` waits indefinitely while Redis is unreachable, so a timeout counts as
+ * an enqueue failure (see the phase plan, POST /videos/:id/upload/complete).
+ */
+export const ENQUEUE_TIMEOUT_MS = 3000;

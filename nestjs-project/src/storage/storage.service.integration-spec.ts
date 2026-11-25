@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { ConfigModule, type ConfigType } from '@nestjs/config';
 import { Test, type TestingModule } from '@nestjs/testing';
 import storageConfig from '../config/storage.config';
+import { MultipartUploadNotFoundError } from './storage.errors';
 import { StorageModule } from './storage.module';
 import { StorageService } from './storage.service';
 
@@ -105,7 +106,27 @@ describe('StorageService (integration, MinIO)', () => {
     createdObjects.push({ bucket: config.videosBucket, key });
 
     const head = await storage.headObject(config.videosBucket, key);
-    expect(head).toEqual({ contentLength: first.length + last.length });
+    expect(head).toEqual({
+      contentLength: first.length + last.length,
+      contentType: 'video/mp4',
+    });
+  });
+
+  it('should throw MultipartUploadNotFoundError when completing an upload that is already gone', async () => {
+    const key = newKey();
+    const uploadId = await storage.createMultipartUpload(key, 'video/mp4');
+    const url = await storage.presignUploadPart(
+      key,
+      uploadId,
+      1,
+      URL_TTL_SECONDS,
+    );
+    const eTag = await putPart(url, bytes(1024, 3));
+    await storage.abortMultipartUpload(key, uploadId);
+
+    await expect(
+      storage.completeMultipartUpload(key, uploadId, [{ partNumber: 1, eTag }]),
+    ).rejects.toBeInstanceOf(MultipartUploadNotFoundError);
   });
 
   it('should list no parts for a freshly created multipart upload', async () => {
