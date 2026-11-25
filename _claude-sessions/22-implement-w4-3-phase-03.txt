@@ -1,0 +1,2387 @@
+
+❯ <browser_instruction># Claude in Chrome browser automation
+
+  You have access to browser automation tools (mcp__claude-in-chrome__*) for
+  interacting with web pages in Chrome. Follow these guidelines for effective
+  browser automation.
+
+  ## Loading deferred tools
+
+  If the mcp__claude-in-chrome__* tools are deferred (must be loaded via
+  ToolSearch before use), load every tool you expect to need in ONE ToolSearch
+  call — the select query accepts a comma-separated list — never one call per
+  tool. Start with the core set:
+
+  ToolSearch with query
+  "select:mcp__claude-in-chrome__tabs_context_mcp,mcp__claude-in-chrome__naviga
+  te,mcp__claude-in-chrome__computer,mcp__claude-in-chrome__read_page,mcp__clau
+  de-in-chrome__tabs_create_mcp,mcp__claude-in-chrome__tabs_close_mcp"
+
+  Add task-specific tools to the same call when the task obviously needs them:
+  read_console_messages / read_network_requests for debugging, form_input for
+  forms, gif_creator for recordings, javascript_tool for page scripting.
+
+  ## GIF recording
+
+  When performing multi-step browser interactions that the user may want to
+  review or share, use mcp__claude-in-chrome__gif_creator to record them.
+
+  You must ALWAYS:
+  * Capture extra frames before and after taking actions to ensure smooth
+  playback
+  * Name the file meaningfully to help the user identify it later (e.g.,
+  "login_process.gif")
+
+  ## Console log debugging
+
+  You can use mcp__claude-in-chrome__read_console_messages to read console
+  output. Console output may be verbose. If you are looking for specific log
+  entries, use the 'pattern' parameter with a regex-compatible pattern. This
+  filters results efficiently and avoids overwhelming output. For example, use
+  pattern: "[MyApp]" to filter for application-specific logs rather than
+  reading all console output.
+
+  ## Alerts and dialogs
+
+  IMPORTANT: Do not trigger JavaScript alerts, confirms, prompts, or browser
+  modal dialogs through your actions. These browser dialogs block all further
+  browser events and will prevent the extension from receiving any subsequent
+  commands. Instead, when possible, use console.log for debugging and then use
+  the mcp__claude-in-chrome__read_console_messages tool to read those log
+  messages. If a page has dialog-triggering elements:
+  1. Avoid clicking buttons or links that may trigger alerts (e.g., "Delete"
+  buttons with confirmation dialogs)
+  2. If you must interact with such elements, warn the user first that this may
+  interrupt the session
+  3. Use mcp__claude-in-chrome__javascript_tool to check for and dismiss any
+  existing dialogs before proceeding
+
+  If you accidentally trigger a dialog and lose responsiveness, inform the user
+  they need to manually dismiss it in the browser.
+
+  ## Avoid rabbit holes and loops
+
+  When using browser automation tools, stay focused on the specific task. If
+  you encounter any of the following, stop and ask the user for guidance:
+  - Unexpected complexity or tangential browser exploration
+  - Browser tool calls failing or returning errors after 2-3 attempts
+  - No response from the browser extension
+  - Page elements not responding to clicks or input
+  - Pages not loading or timing out
+  - Unable to complete the browser task despite multiple approaches
+
+  Explain what you attempted, what went wrong, and ask how the user would like
+  to proceed. Do not keep retrying the same failing browser action or explore
+  unrelated pages without checking in first.
+
+  ## Tab context and session startup
+
+  IMPORTANT: At the start of each browser automation session, call
+  mcp__claude-in-chrome__tabs_context_mcp first to get information about the
+  user's current browser tabs. Use this context to understand what the user
+  might want to work with before creating new tabs.
+
+  Never reuse tab IDs from a previous/other session. Follow these guidelines:
+  1. Only reuse an existing tab if the user explicitly asks to work with it
+  2. Otherwise, create a new tab with mcp__claude-in-chrome__tabs_create_mcp
+  3. If a tool returns an error indicating the tab doesn't exist or is invalid,
+  call tabs_context_mcp to get fresh tab IDs
+  4. When a tab is closed by the user or a navigation error occurs, call
+  tabs_context_mcp to see what tabs are available</browser_instruction>
+
+❯ Fase 03, branch feature/phase-03-videos, bloco W4.3: implementar SOMENTE
+  SI-03.8 a SI-03.12 (rotas do dono: POST /videos/uploads, POST
+  /videos/:id/upload/part-urls, POST /videos/:id/upload/complete, DELETE
+  /videos/:id/upload, GET /videos/:id). Plano mestre:
+  ~/.claude/plans/tenho-o-seguinte-trabalho-indexed-canyon.md (Etapa 4).
+  W4.1–W4.2 fecharam SI-03.1–03.7 (infra, entidade, storage, fila, base do
+  domínio).
+
+  Regras:
+  - context7 antes de usar cada lib (versões em
+  docs/phases/phase-03-videos/library-refs.md; @nestjs/bullmq@11,
+  ioredis@5.11.1). Siga as skills nestjs-best-practices, typeorm e
+  testing-guide-nestjs-project.
+  - Cada SI de endpoint tem spec de teste em
+  nestjs-project/specs/videos-*.plan.md: o e2e deve implementar os cenários do
+  spec, com o target_file indicado.
+  - Todo npm/test/tsc/lint dentro do container. Nunca localhost entre serviços
+  (exceção: minio.localhost). Não mockar o que roda no Compose (Postgres,
+  MinIO, Redis reais; buckets -test, prefixo test). Exceção prevista no plano:
+  o spec de complete simula Redis fora do ar com jest.spyOn(queue, 'add').
+  - Pontos que o líder ajustou no plano e que você deve seguir à risca:
+    - SI-03.8: createMultipartUpload(key, mimeType) envia ContentType (estender
+  o StorageService); title opcional com trim, padrão = fileName sem extensão;
+  retry do publicId em 23505 com SAVEPOINT por tentativa; o AC de 10 GiB é só
+  unitário (no Jest o teto é 12 MiB).
+    - SI-03.10: validar o tamanho de CADA parte (todas menos a última =
+  partSize, última = resto) antes de completar → 422 UPLOAD_SIZE_MISMATCH,
+  nunca 500; enqueue pós-commit com timeout de 3 s (ENQUEUE_TIMEOUT_MS), erro
+  logado e engolido (exceção documentada); NoSuchUpload concorrente → 409
+  INVALID_VIDEO_STATE; headObject passa a devolver contentType e a integração
+  confere ContentType = mime_type.
+    - Toda rota de vídeo com @SkipThrottle() e não-dono sempre 404
+  VIDEO_NOT_FOUND (nunca 403), corpo idêntico ao de id inexistente.
+    - Token expirado nos testes: jwtService.sign(payload, { expiresIn: -60 }),
+  nunca exp no payload.
+  - Se algo do plano não funcionar como escrito, PARE e me traga antes de
+  improvisar. Desvios aprovados vão para Observations do progress.md.
+
+  Ritual por SI: implementar → testes do SI verdes → atualizar progress.md →
+  commit local feat(videos): SI-03.N <título curto> (código + progress.md, git
+  add explícito, sem Co-Authored-By, sem push).
+  Ao chegar em "Seguir para SI-03.13?", responda NÃO e pare. Antes de parar:
+  suíte completa (unit+integration e e2e), npx tsc --noEmit e npm run lint,
+  tudo no container, e reportar os números.
+  No fim: resumo de 5 linhas (commits, testes, desvios do plano, pendências). O
+  export eu peço separado.
+  /implement phase-03-videos
+
+⏺ Vou começar lendo o plano mestre, o progress e os specs dos SIs 03.8–03.12.
+
+⏺ Bash(ls .claude/commands .claude/skills 2>/dev/null; ls
+      docs/phases/phase-03-videos/; ls nestjs-project/specs/ | grep -i video;
+      git log --oneline -3; cat ~/.claude/p…)
+  ⎿  (No output)
+
+⏺ Skill(nestjs-best-practices)
+  ⎿  Loaded skill
+
+⏺ Skill(typeorm)
+  ⎿  Loaded skill
+
+⏺ Skill(testing-guide-nestjs-project)
+  ⎿  Loaded skill
+
+  Read 1 file, listed 1 directory (ctrl+o to expand)
+
+⏺ Agora o preflight: progress, índice do plano, e a Etapa 4 do plano mestre.
+
+⏺ Bash(P=docs/phases/phase-03-videos/phase-03-videos.md; wc -l $P; grep -n "^##
+      " $P; grep -n "^### " $P; head -20 $P; echo ----; cat
+      docs/phases/phase-03-videos/progr…)
+  ⎿  (No output)
+
+⏺ Bash(P=docs/phases/phase-03-videos/phase-03-videos.md; sed -n 14,19p $P; sed
+      -n 231,405p $P)
+  ⎿  (No output)
+
+⏺ Bash(P=docs/phases/phase-03-videos/phase-03-videos.md; sed -n 676,1028p $P)
+  ⎿  (No output)
+
+⏺ Bash(P=docs/phases/phase-03-videos/phase-03-videos.md; sed -n 1028,1060p $P;
+      echo ...; sed -n 1104,1218p $P)
+  ⎿  (No output)
+
+⏺ Agora a Etapa 4 do plano mestre e os 5 specs de teste.
+
+⏺ Bash(cd ~/.claude/plans && grep -n "^#"
+      tenho-o-seguinte-trabalho-indexed-canyon.md | head -60)
+  ⎿  (No output)
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project && sed -n 163,187p
+      ~/.claude/plans/tenho-o-seguinte-trabalho-indexed-canyon.…)
+  ⎿  (No output)
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project/nestjs-project && cat specs/videos-uploads.plan.md
+      specs/videos-upload-part-…)
+  ⎿  (No output)
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Preflight de specs (stale/missing) e inventário do código existente:
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project && PLAN=docs/phases/phase-03-videos/phase-03-videos.md;
+      PLAN_MTIME=$(date -r…)
+  ⎿  (No output)
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Bash(cat src/channels/channels.service.ts src/config/video.config.ts
+      src/config/storage.config.ts src/videos/entities/video.entity.ts; sed -n
+      1,40p src/videos/dto/vi…)
+  ⎿  (No output)
+
+⏺ Lendo as regras do projeto que governam estes artefatos:
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project/.claude/rules && wc -l nestjs-services.md nestjs-controllers.md
+      nestjs-dtos.…)
+  ⎿  (No output)
+  Read 1 file (ctrl+o to expand)
+
+⏺ Agora os padrões existentes: auth.controller.ts, setup do e2e de auth, helpers
+  (cleanAllTables), app.module, e o CLAUDE.md do subprojeto.
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project/nestjs-project && cat CLAUDE.md | head -120; grep -rn
+      "cleanAllTables" src t…)
+  ⎿  (No output)
+
+⏺ Bash(sed -n 1,140p test/auth.e2e-spec.ts; grep -n
+      "describe(\|expiresIn\|jwtService\|getTokenFromMailpit\|confirm"
+      test/auth.e2e-spec.ts | head -40; cat src/test/cre…)
+  ⎿  (No output)
+
+⏺ Bash(sed -n 276,312p test/auth.e2e-spec.ts; cat src/auth/auth.types.ts; sed -n
+      1,80p src/auth/auth.controller.ts; cat src/app.module.ts; ls
+      src/auth/decorators src/c…)
+  ⎿  (No output)
+
+⏺ Seções do library-refs.md relevantes para este bloco:
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project && L=docs/phases/phase-03-videos/library-refs.md; grep -n "^##
+      " $L; grep -n…)
+  ⎿  (No output)
+
+⏺ Bash(sed -n 52,200p docs/phases/phase-03-videos/library-refs.md)
+  ⎿  (No output)
+
+⏺ context7 para as APIs que vou usar (S3 ContentType, BullMQ add, TypeORM update
+  condicional, class-validator arrays):
+
+  Called context7 6 times (ctrl+o to expand)
+
+⏺ Verifiquei os docs: S3 HeadObject retorna ContentType, o add do BullMQ fica
+  pendente com o Redis fora, e manager.update devolve UpdateResult. Vou olhar
+  mais alguns pontos do código existente antes de escrever. · summary
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project/nestjs-project && cat
+      src/common/filters/validation-exception.filter.ts src/…)
+  ⎿  (No output)
+
+⏺ Bash(grep -rn "createChannel" src | grep -v spec; grep -n
+      "createMultipartUpload" -r src test; sed -n 1,40p
+      src/storage/storage.service.integration-spec.ts; grep -rn…)
+  ⎿  (No output)
+
+⏺ Não há ferramentas de tarefa nesta sessão, então o acompanhamento fica só no
+  progress.md. Agora começo pela extensão do StorageService (ContentType no
+  multipart) e pelos DTOs do SI-03.8. · summary
+
+⏺ Update(src/storage/storage.service.ts)
+  ⎿  Added 13 lines, removed 2 lines
+      66      this.publicClient.destroy();
+      67    }
+      68 
+      69 -  async createMultipartUpload(key: string): Promise<string> {  
+      69 +  /**                                                          
+      70 +   * `contentType` is applied by S3 to the completed object, so
+         + presigned GETs                                                
+      71 +   * of the source answer with the declared `video/*` type.    
+      72 +   */                                                          
+      73 +  async createMultipartUpload(                                 
+      74 +    key: string,                                               
+      75 +    contentType: string,                                       
+      76 +  ): Promise<string> {                                         
+      77      const { UploadId } = await this.internalClient.send(
+      71 -      new CreateMultipartUploadCommand({ Bucket: this.videosBuc
+         -ket, Key: key }),                                              
+      78 +      new CreateMultipartUploadCommand({                       
+      79 +        Bucket: this.videosBucket,                             
+      80 +        Key: key,                                              
+      81 +        ContentType: contentType,                              
+      82 +      }),                                                      
+      83      );
+      84      if (!UploadId) {
+      85        throw new Error(`Storage returned no UploadId for ${key}`
+          );
+
+⏺ Bash(sed -i ''
+      "s/storage.createMultipartUpload(key);/storage.createMultipartUpload(key,
+      'video\/mp4');/" src/storage/storage.service.integration-spec.ts && grep
+      -n…)
+  ⎿  Updated src/storage/storage.service.integration-spec.ts +4 -4
+      74 
+      75    it('should complete a multipart upload made of PUTs to presig
+          ned part URLs', async () => {
+      76      const key = newKey();
+      77 -    const uploadId = await storage.createMultipartUpload(key); 
+      77 +    const uploadId = await storage.createMultipartUpload(key, '
+         +video/mp4');                                                   
+      78      openUploads.push({ key, uploadId });
+      79      const first = bytes(MIN_PART_SIZE, 1);
+      80      const last = bytes(1234, 2);
+     ...
+      110 
+      111    it('should list no parts for a freshly created multipart upl
+           oad', async () => {
+      112      const key = newKey();
+      113 -    const uploadId = await storage.createMultipartUpload(key);
+      113 +    const uploadId = await storage.createMultipartUpload(key, 
+          +'video/mp4');                                                 
+      114      openUploads.push({ key, uploadId });
+      115 
+      116      await expect(storage.listAllParts(key, uploadId)).resolves
+           .toEqual([]);
+     ...
+      118 
+      119    it('should tolerate aborting an upload that was already abor
+           ted', async () => {
+      120      const key = newKey();
+      121 -    const uploadId = await storage.createMultipartUpload(key);
+      121 +    const uploadId = await storage.createMultipartUpload(key, 
+          +'video/mp4');                                                 
+      122 
+      123      await storage.abortMultipartUpload(key, uploadId);
+      124 
+     ...
+      129 
+      130    it('should sign every client-facing URL for the public endpo
+           int', async () => {
+      131      const key = newKey();
+      132 -    const uploadId = await storage.createMultipartUpload(key);
+      132 +    const uploadId = await storage.createMultipartUpload(key, 
+          +'video/mp4');                                                 
+      133      openUploads.push({ key, uploadId });
+      134 
+      135      const partUrl = await storage.presignUploadPart(
+  ⎿  Loaded CLAUDE.md
+  ⎿  Loaded ../.claude/rules/typeorm-queries.md
+  ⎿  Loaded ../.claude/rules/nestjs-common-conventions.md
+  ⎿  Loaded ../.claude/rules/nestjs-services.md
+  ⎿  Loaded ../.claude/rules/typescript-strict.md
+
+⏺ DTOs do SI-03.8:
+
+⏺ Write(src/videos/dto/initiate-upload.dto.ts)
+  ⎿  Wrote 41 lines to src/videos/dto/initiate-upload.dto.ts
+       1 import { Transform, type TransformFnParams } from 'class-transfo
+         rmer';
+       2 import {
+       3   IsInt,
+       4   IsOptional,
+       5   IsString,
+       6   Matches,
+       7   MaxLength,
+       8   Min,
+       9   MinLength,
+     … +32 lines (ctrl+o to expand)
+
+⏺ Write(src/videos/dto/part-url.dto.ts)
+  ⎿  Wrote 13 lines to src/videos/dto/part-url.dto.ts
+       1 import { ApiProperty } from '@nestjs/swagger';
+       2
+       3 export class PartUrlDto {
+       4   @ApiProperty({ example: 1, minimum: 1 })
+       5   partNumber: number;
+       6
+       7   @ApiProperty({
+       8     description: 'Presigned `UploadPart` URL. PUT the part bytes
+          to it.',
+       9     example:
+     … +4 lines (ctrl+o to expand)
+
+⏺ Write(src/videos/dto/initiate-upload-response.dto.ts)
+  ⎿  Wrote 34 lines to src/videos/dto/initiate-upload-response.dto.ts
+      1 import { ApiProperty } from '@nestjs/swagger';
+      2 import { PartUrlDto } from './part-url.dto';
+      3
+      4 export class InitiateUploadResponseDto {
+      5   @ApiProperty({ format: 'uuid' })
+      6   videoId: string;
+      7
+      8   @ApiProperty({ example: 'dQw4w9WgXcQ', minLength: 11, maxLength
+        : 11 })
+      9   publicId: string;
+     … +25 lines (ctrl+o to expand)
+
+⏺ Write(src/videos/videos.constants.ts)  ⎿  Wrote 8 lines to src/videos/videos.constants.ts
+      1 /** Most part URLs signed in one response (initiate and `part-url
+        s`). */
+      2 export const MAX_SIGNED_PARTS_PER_BATCH = 100;
+      3
+      4 /** S3 caps a multipart upload at 10,000 parts; `partSize` grows
+        to fit. */
+      5 export const MAX_UPLOAD_PARTS = 10000;
+      6
+      7 /** Attempts to insert a video with a fresh `public_id` on a uniq
+        ue collision. */
+     … +1 line (ctrl+o to expand)
+  ⎿  Loaded ../.claude/rules/nestjs-dtos.md
+
+⏺ Agora o VideosService (só o que o SI-03.8 precisa) e o controller:
+
+⏺ Write(src/videos/videos.service.ts)
+  ⎿  Wrote 220 lines to src/videos/videos.service.ts
+       1 import { randomUUID } from 'crypto';
+       2 import { Inject, Injectable, Logger } from '@nestjs/common';
+       3 import type { ConfigType } from '@nestjs/config';
+       4 import { DataSource, EntityManager, QueryFailedError } from 'typ
+         eorm';
+       5 import { ChannelsService } from '../channels/channels.service';
+       6 import videoConfig from '../config/video.config';
+       7 import { StorageService } from '../storage/storage.service';
+       8 import type { InitiateUploadResponseDto } from './dto/initiate-u
+         pload-response.dto';
+     … +212 lines (ctrl+o to expand)
+
+⏺ Write(src/videos/videos.controller.ts)
+  ⎿  Wrote 70 lines to src/videos/videos.controller.ts
+       1 import { Body, Controller, HttpCode, HttpStatus, Post } from '@n
+         estjs/common';
+       2 import {
+       3   ApiBearerAuth,
+       4   ApiOperation,
+       5   ApiResponse,
+       6   ApiTags,
+       7   getSchemaPath,
+       8 } from '@nestjs/swagger';
+       9 import { SkipThrottle } from '@nestjs/throttler';
+     … +61 lines (ctrl+o to expand)
+
+  Searched for 1 pattern (ctrl+o to expand)
+  ⎿  Loaded ../.claude/rules/nestjs-layer-separation.md
+  ⎿  Loaded ../.claude/rules/nestjs-controllers.md
+
+⏺ Wiring do módulo e ajuste do teste de compilação (o service agora injeta
+  videoConfig):
+
+⏺ Bash(python3 - <<'EOF'
+      import re…)
+  ⎿  Updated src/videos/videos.module.spec.ts +5 -2
+       8  import { Channel } from '../channels/entities/channel.entity';
+       9  import queueConfig from '../config/queue.config';
+      10  import storageConfig from '../config/storage.config';
+      11 +import videoConfig from '../config/video.config';              
+      12  import { VIDEO_PROCESSING_QUEUE } from '../queue/queue.constant
+          s';
+      13  import { StorageService } from '../storage/storage.service';
+      14  import { createTestDataSource } from '../test/create-test-data-
+          source';
+      15  import { User } from '../users/entities/user.entity';
+      16  import { Video } from './entities/video.entity';
+      17  import { VideosModule } from './videos.module';
+      18 +import { VideosService } from './videos.service';              
+      19 
+      20  const ALL_ENTITIES = [User, Channel, RefreshToken, Verification
+          Token, Video];
+      21 
+      22  describe('VideosModule', () => {
+      21 -  it('should compile with its repository, channels lookup, stor
+         -age and queue', async () => {                                  
+      23 +  it('should compile with its service, repository, channels loo
+         +kup, storage and queue', async () => {                         
+      24      const moduleRef = await Test.createTestingModule({
+      25        imports: [
+      26          ConfigModule.forRoot({
+      27            isGlobal: true,
+      26 -          load: [storageConfig, queueConfig],                  
+      28 +          load: [storageConfig, queueConfig, videoConfig],     
+      29          }),
+      30          TypeOrmModule.forRoot(createTestDataSource(ALL_ENTITIES
+          ).options),
+      31          VideosModule,
+      32        ],
+      33      }).compile();
+      34 
+      35 +    expect(moduleRef.get(VideosService)).toBeDefined();        
+      36      expect(moduleRef.get(getRepositoryToken(Video))).toBeDefine
+          d();
+      37      expect(moduleRef.get(ChannelsService, { strict: false })).t
+          oBeDefined();
+      38      expect(moduleRef.get(StorageService, { strict: false })).to
+          BeDefined();
+  ⎿  Updated src/videos/videos.module.ts +4
+       4  import { QueueModule } from '../queue/queue.module';
+       5  import { StorageModule } from '../storage/storage.module';
+       6  import { Video } from './entities/video.entity';
+       7 +import { VideosController } from './videos.controller';        
+       8 +import { VideosService } from './videos.service';              
+       9 
+      10  @Module({
+      11    imports: [
+     ...
+      14      StorageModule,
+      15      QueueModule,
+      16    ],
+      17 +  controllers: [VideosController],                             
+      18 +  providers: [VideosService],                                  
+      19  })
+      20  export class VideosModule {}
+
+⏺ Bash(cat src/channels/channels.module.ts src/storage/storage.module.ts | grep
+      -n "exports\|Module("; docker compose exec -T nestjs-api npx tsc --noEmit
+      -p tsconfig.j…)
+  ⎿  (No output)
+
+⏺ tsc limpo. Antes dos testes, confiro as colunas obrigatórias de User/Channel
+  para semear dados na integração:
+
+⏺ Bash(grep -n "Column\|: \w" src/users/entities/user.entity.ts
+      src/channels/entities/channel.entity.ts | grep -v import; sed -n 1,60p
+      src/channels/channels.service.in…)
+  ⎿  (No output)
+
+⏺ Unit tests do initiateUpload:
+
+⏺ Write(src/videos/videos.service.spec.ts)
+  ⎿  Wrote 315 lines to src/videos/videos.service.spec.ts
+       1 import { Test } from '@nestjs/testing';
+       2 import { DataSource, QueryFailedError } from 'typeorm';
+       3 import { ChannelsService } from '../channels/channels.service';
+       4 import videoConfig from '../config/video.config';
+       5 import { StorageService } from '../storage/storage.service';
+       6 import type { InitiateUploadDto } from './dto/initiate-upload.dt
+         o';
+       7 import { Video, VideoProcessingStatus } from './entities/video.e
+         ntity';
+       8 import * as publicIdUtil from './public-id.util';
+     … +307 lines (ctrl+o to expand)
+  ⎿  Loaded ../.claude/rules/nestjs-testing.md
+
+⏺ Teste de integração (Postgres + MinIO + Redis reais) do SI-03.8:
+
+⏺ Write(src/videos/videos.service.integration-spec.ts)
+  ⎿  Wrote 197 lines to src/videos/videos.service.integration-spec.ts
+       1 import { randomUUID } from 'crypto';
+       2 import { ConfigModule } from '@nestjs/config';
+       3 import { Test, type TestingModule } from '@nestjs/testing';
+       4 import { TypeOrmModule } from '@nestjs/typeorm';
+       5 import { DataSource, IsNull, Not, Repository } from 'typeorm';
+       6 import { RefreshToken } from '../auth/entities/refresh-token.ent
+         ity';
+       7 import { VerificationToken } from '../auth/entities/verification
+         -token.entity';
+       8 import { Channel } from '../channels/entities/channel.entity';
+     … +189 lines (ctrl+o to expand)
+
+⏺ Helper compartilhado dos e2e de vídeo. Antes, confiro como o access token é
+  assinado (segredo padrão do JwtModule ou explícito):
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+⏺ Write(test/support/videos-e2e.ts)
+  ⎿  Wrote 128 lines to test/support/videos-e2e.ts
+       1 import { INestApplication, ValidationPipe } from '@nestjs/common
+         ';
+       2 import { JwtService } from '@nestjs/jwt';
+       3 import { Test, type TestingModule } from '@nestjs/testing';
+       4 import { ThrottlerStorage, ThrottlerStorageService } from '@nest
+         js/throttler';
+       5 import request from 'supertest';
+       6 import type { App } from 'supertest/types';
+       7 import { DataSource } from 'typeorm';
+       8 import { AppModule } from '../../src/app.module';
+     … +120 lines (ctrl+o to expand)
+
+  Searched for 1 pattern (ctrl+o to expand)
+  ⎿  Loaded ../.claude/rules/auth-jwt.md
+
+⏺ Agora o e2e do spec videos-uploads.plan.md (8 cenários, 1 describe):
+
+⏺ Write(test/videos-uploads.e2e-spec.ts)
+  ⎿  Wrote 238 lines to test/videos-uploads.e2e-spec.ts
+       1 import request from 'supertest';
+       2 import { Video } from '../src/videos/entities/video.entity';
+       3 import type { ApiErrorEnvelope } from '../src/common/openapi/api
+         -error-envelope.dto';
+       4 import type { InitiateUploadResponseDto } from '../src/videos/dt
+         o/initiate-upload-response.dto';
+       5 import { cleanAllTables } from '../src/test/create-test-data-sou
+         rce';
+       6 import {
+       7   closeVideosE2eApp,
+     … +231 lines (ctrl+o to expand)
+
+⏺ Rodando os testes do SI-03.8 no container (unit, integração, módulo, storage
+  afetado e o e2e):
+
+⏺ Bash(docker compose exec -T nestjs-api npx tsc --noEmit 2>&1 | tail -20;
+      docker compose exec -T nestjs-api npm test -- --runInBand
+      src/videos/videos.service.spec.ts…)
+  ⎿  (No output)
+
+⏺ 33/33 verdes. O aviso do pg ("client already executing a query") me intriga;
+  confiro se vem do meu código ou já existia:
+
+⏺ Bash(for f in src/videos/videos.service.integration-spec.ts
+      src/storage/storage.service.integration-spec.ts
+      src/videos/videos.module.spec.ts src/channels/channels.se…)
+  ⎿  (No output)
+⏺ Pré-existente (aparece também em channels.service.integration-spec.ts e no
+  module spec, vindo do synchronize do TypeORM), não é deste SI. Agora o e2e:
+
+⏺ Bash(docker compose exec -T nestjs-api npm run test:e2e --
+      test/videos-uploads.e2e-spec.ts 2>&1 | grep -v
+      "^\s*✓\|^$\|localstorage\|trace-warnings" | tail -60)
+  ⎿  (No output)
+
+⏺ Tudo verde. Lint dos arquivos tocados antes do commit:
+
+⏺ Bash(docker compose exec -T nestjs-api npx eslint src/videos src/storage
+      test/support test/videos-uploads.e2e-spec.ts 2>&1 | tail -30)
+  ⎿  (No output)
+
+⏺ Bash(docker compose exec -T nestjs-api npx eslint --fix src/videos src/storage
+      test/support test/videos-uploads.e2e-spec.ts 2>&1 | tail -10; sed -n
+      55,60p test/video…)
+  ⎿  Updated src/videos/videos.service.spec.ts +12 -10
+      233      });
+      234 
+      235      it('should reject ACTIVE_UPLOAD_LIMIT_REACHED before openi
+           ng a multipart upload', async () => {
+      236 -      manager.count.mockResolvedValue(DEFAULT_CONFIG.maxActive
+          -UploadsPerChannel);                                           
+      236 +      manager.count.mockResolvedValue(                        
+      237 +        DEFAULT_CONFIG.maxActiveUploadsPerChannel,            
+      238 +      );                                                      
+      239 
+      240        await expect(
+      241          service.initiateUpload(USER_ID, initiateDto()),
+     ...
+      247        const insertError = new Error('insert failed');
+      248        manager.save.mockRejectedValue(insertError);
+      249 
+      248 -      await expect(                                           
+      249 -        service.initiateUpload(USER_ID, initiateDto()),       
+      250 -      ).rejects.toBe(insertError);                            
+      250 +      await expect(service.initiateUpload(USER_ID, initiateDto
+          +())).rejects.toBe(                                            
+      251 +        insertError,                                          
+      252 +      );                                                      
+      253 
+      254        const [key] = storageService.createMultipartUpload.mock.
+           calls[0] as [
+      255          string,
+     ...
+      268          new Error('storage down'),
+      269        );
+      270 
+      269 -      await expect(                                           
+      270 -        service.initiateUpload(USER_ID, initiateDto()),       
+      271 -      ).rejects.toBe(insertError);                            
+      271 +      await expect(service.initiateUpload(USER_ID, initiateDto
+          +())).rejects.toBe(                                            
+      272 +        insertError,                                          
+      273 +      );                                                      
+      274      });
+      275 
+      276      it('should retry with a new public_id inside a fresh SAVEP
+           OINT on a public_id unique violation', async () => {
+     ...
+      297        const otherViolation = pgUniqueViolation('id');
+      298        manager.save.mockRejectedValueOnce(otherViolation);
+      299 
+      298 -      await expect(                                           
+      299 -        service.initiateUpload(USER_ID, initiateDto()),       
+      300 -      ).rejects.toBe(otherViolation);                         
+     … +6 lines (ctrl+o to expand)
+  ⎿  Updated test/videos-uploads.e2e-spec.ts +14 -10
+      55    }
+      56 
+      57    async function ownerChannelId(): Promise<string> {
+      58 -    const [row] = (await ctx.dataSource.query(                 
+      58 +    const [row] = await ctx.dataSource.query(                  
+      59        'SELECT id FROM channels WHERE user_id = $1',
+      60        [owner.userId],
+      61 -    )) as { id: string }[];                                    
+      61 +    );                                                         
+      62      return row.id;
+      63    }
+      64 
+     ...
+      128        ...VALID_BODY,
+      129        fileName: 'aula-01.mp4',
+      130      }).expect(201);
+      131 -    const defaultRow = await ctx.dataSource.getRepository(Vide
+          -o).findOneByOrFail({                                          
+      132 -      id: (withoutTitle.body as InitiateUploadResponseDto).vid
+          -eoId,                                                         
+      133 -    });                                                       
+      131 +    const defaultRow = await ctx.dataSource                   
+      132 +      .getRepository(Video)                                   
+      133 +      .findOneByOrFail({                                      
+      134 +        id: (withoutTitle.body as InitiateUploadResponseDto).v
+          +ideoId,                                                       
+      135 +      });                                                     
+      136      expect(defaultRow.title).toBe('aula-01');
+      137 
+      138      const withTitle = await postUpload(owner.accessToken, {
+     ...
+      140        fileName: 'aula-02.mp4',
+      141        title: '  Minha aula  ',
+      142      }).expect(201);
+      141 -    const titledRow = await ctx.dataSource.getRepository(Video
+          -).findOneByOrFail({                                           
+      142 -      id: (withTitle.body as InitiateUploadResponseDto).videoI
+          -d,                                                            
+      143 -    });                                                       
+      143 +    const titledRow = await ctx.dataSource                    
+      144 +      .getRepository(Video)                                   
+      145 +      .findOneByOrFail({                                      
+      146 +        id: (withTitle.body as InitiateUploadResponseDto).vide
+          +oId,                                                          
+      147 +      });                                                     
+      148      expect(titledRow.title).toBe('Minha aula');
+      149    });
+      150 
+     … +13 lines (ctrl+o to expand)
+
+⏺ O autofix removeu os casts e expôs any; uso o genérico de
+  dataSource.query<T>():
+
+⏺ Bash(sed -n 56,63p test/videos-uploads.e2e-spec.ts; sed -n 180,188p
+      test/videos-uploads.e2e-spec.ts)
+  ⎿  (No output)
+
+⏺ Bash(python3 - <<'EOF'
+      p='test/videos-uploads.e2e-spec.ts'…)
+  ⎿  Updated test/videos-uploads.e2e-spec.ts +2 -2
+      55    }
+      56 
+      57    async function ownerChannelId(): Promise<string> {
+      58 -    const [row] = await ctx.dataSource.query(                  
+      58 +    const [row] = await ctx.dataSource.query<{ id: string }[]>(
+      59        'SELECT id FROM channels WHERE user_id = $1',
+      60        [owner.userId],
+      61      );
+     ...
+      179        error: 'ACTIVE_UPLOAD_LIMIT_REACHED',
+      180        message: 'Too many uploads in progress for this channel'
+           ,
+      181      });
+      182 -    const [{ count }] = await ctx.dataSource.query(           
+      182 +    const [{ count }] = await ctx.dataSource.query<{ count: nu
+          +mber }[]>(                                                    
+      183        `SELECT count(*)::int AS count FROM videos
+      184         WHERE channel_id = $1 AND processing_status = 'uploadin
+           g'`,
+      185        [await ownerChannelId()],
+
+⏺ Lint e tsc limpos. Re-rodo os testes do SI após o autofix e então atualizo o
+  progress.md e faço o commit:
+
+⏺ Bash(docker compose exec -T nestjs-api npm test -- --runInBand
+      src/videos/videos.service.spec.ts
+      src/videos/videos.service.integration-spec.ts src/videos/videos.modu…)
+  ⎿  (No output)
+
+⏺ Atualizando o progress.md do SI-03.8:
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project && python3 - <<'EOF'
+      p='docs/phases/phase-03-videos/progress.md'…)
+  ⎿  Updated ~/Documents/projects/full-cycle/mba-ia-greenfield-project/docs
+     /phases/phase-03-videos/progress.md +11 -4
+      1  # phase-03-videos — Progress
+      2 
+      3  **Status:** in_progress
+      4 -**SIs:** 7/21 completed                                         
+      4 +**SIs:** 8/21 completed                                         
+      5 
+      6  ### SI-03.1 — Infra: dependências, namespaces de configuração e
+         variáveis de ambiente
+      7  - **Status:** completed
+     ...
+      74    - Every suite that loads `AppModule`/`VideosModule` leaves on
+          ly the `test:video-processing:meta` and `test:video-maintenance
+          :meta` hashes in Redis (written by `Queue` on connect; bullmq v
+          ersion, no jobs). Under the `test` prefix they never touch `bul
+          l:*`.
+      75 
+      76  ### SI-03.8 — Endpoint POST /videos/uploads
+      77 -- **Status:** pending                                          
+      78 -- **Tests:** —                                                 
+      79 -- **Observations:** none                                       
+      77 +- **Status:** completed                                        
+      78 +- **Tests:** 30 passing for the SI: `src/videos/videos.service.
+         +spec.ts` 17, `src/videos/videos.service.integration-spec.ts` 4,
+         + `test/videos-uploads.e2e-spec.ts` 8 (the 8 spec scenarios), `s
+         +rc/videos/videos.module.spec.ts` 1. Fallout re-run: `src/storag
+         +e/storage.service.integration-spec.ts` 11/11                   
+      79 +- **Observations:**                                            
+      80 +  - `StorageService.createMultipartUpload(key, contentType)` no
+         +w sends `ContentType`, as the leader's plan fix asked. The 4 ca
+         +lls in `storage.service.integration-spec.ts` pass `'video/mp4'`
+         +.                                                              
+      81 +  - The `public_id` retry uses one SAVEPOINT per attempt (`vide
+         +o_public_id_N`), max 5, and retries only on `23505` whose `deta
+         +il` names `(public_id)`. The unique-violation check is a local 
+         +copy of the private helper in `ChannelsService`. Follow-up for 
+         +the separate task the plan already names (the `ChannelsService`
+         + retry without SAVEPOINT): move the helper to a shared place an
+         +d use it in both modules.                                      
+      82 +  - When the insert fails, the multipart upload is aborted best
+         +-effort. If the abort also fails, it is logged at `warn` and th
+         +e insert error is rethrown. The abort is only attempted for an 
+         +insert failure, as the plan says. A commit failure after a succ
+         +essful insert would leave an orphan multipart upload (a rare ed
+         +ge case, not covered).                                         
+      83 +  - `VideosModule` now registers `VideosController` + `VideosSe
+         +rvice`. `videos.module.spec.ts` loads `videoConfig` (needed by 
+         +the service) and also checks `VideosService`.                  
+      84 +  - New e2e helper `test/support/videos-e2e.ts`, shared by the 
+         +5 video e2e suites of this block: app bootstrap with the `main.
+         +ts` globals, register → confirm → login (captures the token thr
+         +ough the mail spy, like `auth.e2e-spec.ts`), expired token via 
+         +`jwtService.sign(payload, { expiresIn: -60 })`, initiate, and a
+         + direct PUT to storage. Not in the plan's table, but it keeps t
+         +he 5 suites from repeating ~80 lines each.                     
+      85 +  - The e2e suites leave aborted/open multipart uploads in `vid
+         +eos-test` (no row survives `cleanAllTables`). The integration s
+         +uite aborts the uploads it opened in `afterEach`. The leftovers
+         + are bounded and test-only. Cleaning `videos-test` belongs to w
+         +hoever adds a bucket lifecycle (out of scope).                 
+      86 +  - The `pg` warning "Calling client.query() when the client is
+         + already executing a query" predates this SI: `channels.service
+         +.integration-spec.ts` and `videos.module.spec.ts` print it too.
+         + It comes from TypeORM `synchronize` in the test DataSource.   
+      87 
+      88  ### SI-03.9 — Endpoint POST /videos/:id/upload/part-urls
+      89  - **Status:** pending
+
+⏺ SI-03.8 concluído (57a0c80). Sigo para o SI-03.9 — POST
+  /videos/:id/upload/part-urls: DTOs, findOwnedOrFail/assertUploading e
+  signPartUrls.
+
+⏺ Write(src/videos/dto/part-urls.dto.ts)
+  ⎿  Wrote 25 lines to src/videos/dto/part-urls.dto.ts
+       1 import {
+       2   ArrayMaxSize,
+       3   ArrayMinSize,
+       4   ArrayUnique,
+       5   IsArray,
+       6   IsInt,
+       7   IsOptional,
+       8   Min,
+       9 } from 'class-validator';
+      10 import { MAX_SIGNED_PARTS_PER_BATCH } from '../videos.constants'
+     … +16 lines (ctrl+o to expand)
+
+⏺ Write(src/videos/dto/uploaded-part.dto.ts)
+  ⎿  Wrote 12 lines to src/videos/dto/uploaded-part.dto.ts
+       1 import { ApiProperty } from '@nestjs/swagger';
+       2
+       3 export class UploadedPartDto {
+       4   @ApiProperty({ example: 1, minimum: 1 })
+       5   partNumber: number;
+       6
+       7   @ApiProperty({ description: 'Stored part size in bytes.', exam
+         ple: 5242880 })
+       8   size: number;
+       9
+     … +3 lines (ctrl+o to expand)
+
+⏺ Write(src/videos/dto/part-urls-response.dto.ts)
+  ⎿  Wrote 36 lines to src/videos/dto/part-urls-response.dto.ts
+       1 import { ApiProperty } from '@nestjs/swagger';
+       2 import { PartUrlDto } from './part-url.dto';
+       3 import { UploadedPartDto } from './uploaded-part.dto';
+       4
+       5 export class PartUrlsResponseDto {
+       6   @ApiProperty({ format: 'uuid' })
+       7   videoId: string;
+       8
+       9   @ApiProperty({ description: 'S3 multipart `UploadId`.' })
+      10   uploadId: string;
+     … +26 lines (ctrl+o to expand)
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project/nestjs-project && python3 - <<'EOF'
+      p='src/videos/videos.service.ts'…)
+  ⎿  Updated src/videos/videos.service.ts +118 -6
+       1  import { randomUUID } from 'crypto';
+       2  import { Inject, Injectable, Logger } from '@nestjs/common';
+       3  import type { ConfigType } from '@nestjs/config';
+       4 -import { DataSource, EntityManager, QueryFailedError } from 'ty
+         -peorm';                                                        
+       4 +import { InjectRepository } from '@nestjs/typeorm';            
+       5 +import {                                                       
+       6 +  DataSource,                                                  
+       7 +  EntityManager,                                               
+       8 +  QueryFailedError,                                            
+       9 +  Repository,                                                  
+      10 +} from 'typeorm';                                              
+      11  import { ChannelsService } from '../channels/channels.service';
+      12  import videoConfig from '../config/video.config';
+      13  import { StorageService } from '../storage/storage.service';
+      14  import type { InitiateUploadResponseDto } from './dto/initiate-
+          upload-response.dto';
+      15  import type { InitiateUploadDto } from './dto/initiate-upload.d
+          to';
+      16  import type { PartUrlDto } from './dto/part-url.dto';
+      17 +import type { PartUrlsResponseDto } from './dto/part-urls-respo
+         +nse.dto';                                                      
+      18 +import type { PartUrlsDto } from './dto/part-urls.dto';        
+      19  import {
+      20    Video,
+      21    VideoProcessingStatus,
+     ...
+      30  import {
+      31    ActiveUploadLimitReachedException,
+      32    ChannelNotFoundException,
+      33 +  InvalidPartNumberException,                                  
+      34 +  InvalidVideoStateException,                                  
+      35 +  VideoNotFoundException,                                      
+      36    VideoTooLargeException,
+      37  } from './videos.exceptions';
+      38 
+     ...
+      44    partCount: number;
+      45  }
+      46 
+      47 +/** A video whose multipart upload is still open. */           
+      48 +type UploadingVideo = Video & { upload_id: string };           
+      49 +                                                               
+      50  type NewVideoFields = Omit<
+      51    Partial<Video>,
+      52    'public_id' | 'created_at' | 'updated_at'
+     … +151 lines (ctrl+o to expand)
+
+⏺ Rota no controller:
+
+⏺ Bash(python3 - <<'EOF'
+      p='src/videos/videos.controller.ts'…)
+  ⎿  Updated src/videos/videos.controller.ts +54 -1
+       1 -import { Body, Controller, HttpCode, HttpStatus, Post } from '@
+         -nestjs/common';                                                
+       1 +import {                                                       
+       2 +  Body,                                                        
+       3 +  Controller,                                                  
+       4 +  HttpCode,                                                    
+       5 +  HttpStatus,                                                  
+       6 +  Param,                                                       
+       7 +  ParseUUIDPipe,                                               
+       8 +  Post,                                                        
+       9 +} from '@nestjs/common';                                       
+      10  import {
+      11    ApiBearerAuth,
+      12    ApiOperation,
+     ...
+      20  import { ApiErrorEnvelope } from '../common/openapi/api-error-e
+          nvelope.dto';
+      21  import { InitiateUploadResponseDto } from './dto/initiate-uploa
+          d-response.dto';
+      22  import { InitiateUploadDto } from './dto/initiate-upload.dto';
+      23 +import { PartUrlsResponseDto } from './dto/part-urls-response.d
+         +to';                                                           
+      24 +import { PartUrlsDto } from './dto/part-urls.dto';             
+      25  import { VideosService } from './videos.service';
+      26 
+      27  const ERROR_SCHEMA = { $ref: getSchemaPath(ApiErrorEnvelope) };
+     ...
+       77    ): Promise<InitiateUploadResponseDto> {
+       78      return this.videosService.initiateUpload(user.sub, dto);
+       79    }
+       80 +                                                              
+       81 +  @Post(':id/upload/part-urls')                               
+       82 +  @HttpCode(HttpStatus.OK)                                    
+       83 +  @ApiBearerAuth('access-token')                              
+       84 +  @ApiOperation({                                             
+       85 +    summary: 'Sign part URLs (resume an upload)',             
+       86 +    description:                                              
+       87 +      'Lists the parts already stored and signs the missing on
+          +es (the first 100, ascending), or exactly the requested `partN
+          +umbers`, which may be re-PUT. Also marks the upload as active 
+          +for the maintenance sweep.',                                  
+       88 +  })                                                          
+       89 +  @ApiResponse({                                              
+       90 +    status: 200,                                              
+       91 +    description: 'Parts already stored and newly signed part U
+          +RLs',                                                         
+       92 +    type: PartUrlsResponseDto,                                
+       93 +  })                                                          
+       94 +  @ApiResponse({                                              
+       95 +    status: 400,                                              
+     … +28 lines (ctrl+o to expand)
+
+⏺ Agora os unit tests do signPartUrls. Leio o topo atual do spec (o autofix
+  reformatou):
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Bash(python3 - <<'EOF'
+      p='src/videos/videos.service.spec.ts'…)
+  ⎿  Updated src/videos/videos.service.spec.ts +148 -1
+       1  import { Test } from '@nestjs/testing';
+       2 +import { getRepositoryToken } from '@nestjs/typeorm';          
+       3  import { DataSource, QueryFailedError } from 'typeorm';
+       4  import { ChannelsService } from '../channels/channels.service';
+       5  import videoConfig from '../config/video.config';
+       6  import { StorageService } from '../storage/storage.service';
+       7  import type { InitiateUploadDto } from './dto/initiate-upload.d
+          to';
+       7 -import { Video, VideoProcessingStatus } from './entities/video.
+         -entity';                                                       
+       8 +import {                                                       
+       9 +  Video,                                                       
+      10 +  VideoProcessingStatus,                                       
+      11 +  VideoPublicationStatus,                                      
+      12 +} from './entities/video.entity';                              
+      13  import * as publicIdUtil from './public-id.util';
+      14  import {
+      15    ActiveUploadLimitReachedException,
+      16    ChannelNotFoundException,
+      17 +  InvalidPartNumberException,                                  
+      18 +  InvalidVideoStateException,                                  
+      19 +  VideoNotFoundException,                                      
+      20    VideoTooLargeException,
+      21  } from './videos.exceptions';
+      22  import { VideosService } from './videos.service';
+     ...
+      26  const USER_ID = 'user-1';
+      27  const CHANNEL_ID = 'channel-1';
+      28  const UPLOAD_ID = 'upload-1';
+      29 +const VIDEO_ID = '0b6f3a8e-6f25-4d5e-9a57-0d7cbe0f4c11';       
+      30 
+      31  const DEFAULT_CONFIG = {
+      32    maxUploadBytes: 10 * GIB,
+     ...
+       60    };
+       61  }
+       62 
+       63 +function videoFixture(overrides: Partial<Video> = {}): Video {
+       64 +  return {                                                    
+       65 +    id: VIDEO_ID,                                             
+       66 +    public_id: 'abcdefghijk',                                 
+       67 +    title: 'aula',                                            
+       68 +    channel_id: CHANNEL_ID,                                   
+       69 +    processing_status: VideoProcessingStatus.UPLOADING,       
+     … +157 lines (ctrl+o to expand)
+
+⏺ Unit verde (26). Agora os casos de integração do SI-03.9 (PUT real da parte 1,
+  updated_at, não-dono):
+
+⏺ Bash(python3 - <<'EOF'
+      p='src/videos/videos.service.integration-spec.ts'…)
+  ⎿  Updated src/videos/videos.service.integration-spec.ts +76 -1
+      23    VideoPublicationStatus,
+      24  } from './entities/video.entity';
+      25  import * as publicIdUtil from './public-id.util';
+      26 -import { ActiveUploadLimitReachedException } from './videos.exc
+         -eptions';                                                      
+      26 +import {                                                       
+      27 +  ActiveUploadLimitReachedException,                           
+      28 +  VideoNotFoundException,                                      
+      29 +} from './videos.exceptions';                                  
+      30  import { VideosModule } from './videos.module';
+      31  import { VideosService } from './videos.service';
+      32 
+     ...
+      34  const MIB = 1024 * 1024;
+      35  const MAX_ACTIVE_UPLOADS = 5;
+      36 
+      37 +/** PUTs `size` bytes straight to a presigned part URL, like th
+         +e browser does. */                                             
+      38 +async function putPart(url: string, size: number): Promise<void
+         +> {                                                            
+      39 +  const response = await fetch(url, {                          
+      40 +    method: 'PUT',                                             
+      41 +    body: new Uint8Array(Buffer.alloc(size, 1)),               
+      42 +  });                                                          
+      43 +  expect(response.status).toBe(200);                           
+      44 +}                                                              
+      45 +                                                               
+      46  describe('VideosService (integration, Postgres + MinIO + Redis)
+          ', () => {
+      47    let moduleRef: TestingModule;
+      48    let service: VideosService;
+     ...
+      206        await expect(videoRepository.count()).resolves.toBe(2);
+      207      });
+      208    });
+      209 +                                                              
+      210 +  describe('signPartUrls', () => {                            
+      211 +    it('should list a really uploaded part 1 and sign the miss
+          +ing parts from 2 on', async () => {                           
+      212 +      const { userId } = await createUserWithChannel('owner');
+      213 +      const initiated = await service.initiateUpload(         
+      214 +        userId,                                               
+      215 +        initiateDto({ sizeBytes: 12 * MIB }),                 
+      216 +      );                                                      
+      217 +      await putPart(initiated.parts[0].url, 5 * MIB);         
+      218 +                                                              
+      219 +      const result = await service.signPartUrls(              
+     … +53 lines (ctrl+o to expand)
+
+⏺ Integração verde (7). Agora o e2e do spec videos-upload-part-urls.plan.md (7
+  cenários):
+⏺ Write(test/videos-upload-part-urls.e2e-spec.ts)
+  ⎿  Wrote 198 lines to test/videos-upload-part-urls.e2e-spec.ts
+       1 import { randomUUID } from 'crypto';
+       2 import request from 'supertest';
+       3 import type { ApiErrorEnvelope } from '../src/common/openapi/api
+         -error-envelope.dto';
+       4 import { cleanAllTables } from '../src/test/create-test-data-sou
+         rce';
+       5 import type { InitiateUploadResponseDto } from '../src/videos/dt
+         o/initiate-upload-response.dto';
+       6 import type { PartUrlsResponseDto } from '../src/videos/dto/part
+         -urls-response.dto';
+     … +192 lines (ctrl+o to expand)
+
+⏺ Bash(python3 - <<'EOF'
+      p='test/videos-upload-part-urls.e2e-spec.ts'…)
+  ⎿  Updated src/videos/videos.controller.ts +1 -2
+      104    })
+      105    @ApiResponse({
+      106      status: 404,
+      107 -    description:                                              
+      108 -      'Video not found or not owned by the caller (VIDEO_NOT_F
+          -OUND)',                                                       
+      107 +    description: 'Video not found or not owned by the caller (
+          +VIDEO_NOT_FOUND)',                                            
+      108      schema: ERROR_SCHEMA,
+      109    })
+      110    @ApiResponse({
+  ⎿  Updated src/videos/videos.service.integration-spec.ts +1 -5
+      216        );
+      217        await putPart(initiated.parts[0].url, 5 * MIB);
+      218 
+      219 -      const result = await service.signPartUrls(              
+      220 -        initiated.videoId,                                    
+      221 -        userId,                                               
+      222 -        {},                                                   
+      223 -      );                                                      
+      219 +      const result = await service.signPartUrls(initiated.vide
+          +oId, userId, {});                                             
+      220 
+      221        expect(result.uploadedParts).toHaveLength(1);
+      222        expect(result.uploadedParts[0]).toMatchObject({
+  ⎿  Updated test/videos-upload-part-urls.e2e-spec.ts +17 -15
+       4  import { cleanAllTables } from '../src/test/create-test-data-so
+          urce';
+       5  import type { InitiateUploadResponseDto } from '../src/videos/d
+          to/initiate-upload-response.dto';
+       6  import type { PartUrlsResponseDto } from '../src/videos/dto/par
+          t-urls-response.dto';
+       7 -import { Video } from '../src/videos/entities/video.entity';   
+       7 +import {                                                       
+       8 +  Video,                                                       
+       9 +  VideoProcessingStatus,                                       
+      10 +} from '../src/videos/entities/video.entity';                  
+      11  import {
+      12    closeVideosE2eApp,
+      13    createVideosE2eApp,
+     ...
+      78    it('retomada-sem-body-assina-as-faltantes-e-avanca-updated-at
+          ', async () => {
+      79      const updatedAtBefore = await readUpdatedAt();
+      80 
+      78 -    const res = await postPartUrls(                            
+      79 -      initiated.videoId,                                       
+      80 -      owner.accessToken,                                       
+      81 -    ).expect(200);                                             
+      81 +    const res = await postPartUrls(initiated.videoId, owner.acc
+         +essToken).expect(                                              
+      82 +      200,                                                     
+      83 +    );                                                         
+      84 
+      85      const body = res.body as PartUrlsResponseDto;
+      86      expect(body.videoId).toBe(initiated.videoId);
+     ...
+      152    });
+      153 
+      154    it('video-fora-de-uploading-retorna-409', async () => {
+      153 -    await ctx.dataSource                                      
+      154 -      .getRepository(Video)                                   
+      155 -      .update(                                                
+      156 -        { id: initiated.videoId },                            
+      157 -        { processing_status: 'processing' as Video['processing
+          -_status'], upload_id: null },                                 
+      158 -      );                                                      
+      155 +    await ctx.dataSource.getRepository(Video).update(         
+      156 +      { id: initiated.videoId },                              
+      157 +      {                                                       
+      158 +        processing_status: VideoProcessingStatus.PROCESSING,  
+      159 +        upload_id: null,                                      
+      160 +      },                                                      
+      161 +    );                                                        
+     … +11 lines (ctrl+o to expand)
+
+⏺ Re-rodo o conjunto do SI após o autofix (unit + integração + e2e de uploads,
+  que compartilha o service) e faço o commit do SI-03.9:
+
+⏺ Bash(docker compose exec -T nestjs-api npx jest --runInBand
+      src/videos/videos.service.spec.ts
+      src/videos/videos.service.integration-spec.ts 2>&1 | grep -E "^Tests:|●…)
+  ⎿  (No output)
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project && python3 - <<'EOF'
+      p='docs/phases/phase-03-videos/progress.md'…)
+  ⎿  Updated ~/Documents/projects/full-cycle/mba-ia-greenfield-project/docs
+     /phases/phase-03-videos/progress.md +7 -4
+      1  # phase-03-videos — Progress
+      2 
+      3  **Status:** in_progress
+      4 -**SIs:** 8/21 completed                                         
+      4 +**SIs:** 9/21 completed                                         
+      5 
+      6  ### SI-03.1 — Infra: dependências, namespaces de configuração e
+         variáveis de ambiente
+      7  - **Status:** completed
+     ...
+      86    - The `pg` warning "Calling client.query() when the client is
+           already executing a query" predates this SI: `channels.service
+          .integration-spec.ts` and `videos.module.spec.ts` print it too.
+           It comes from TypeORM `synchronize` in the test DataSource.
+      87 
+      88  ### SI-03.9 — Endpoint POST /videos/:id/upload/part-urls
+      89 -- **Status:** pending                                          
+      90 -- **Tests:** —                                                 
+      91 -- **Observations:** none                                       
+      89 +- **Status:** completed                                        
+      90 +- **Tests:** 19 new, passing for the SI: `src/videos/videos.ser
+         +vice.spec.ts` +9 (26 total), `src/videos/videos.service.integra
+         +tion-spec.ts` +3 (7 total), `test/videos-upload-part-urls.e2e-s
+         +pec.ts` 7 (the 7 spec scenarios). `test/videos-uploads.e2e-spec
+         +.ts` re-run: 8/8                                               
+      91 +- **Observations:**                                            
+      92 +  - `findOwnedOrFail` loads the video and the caller's channel 
+         +id (`ChannelsService.findIdByUserId`) in parallel. A missing vi
+         +deo, another channel's video, and a caller without a channel al
+         +l give the same `VideoNotFoundException`. `assertUploading` is 
+         +a TS assertion function (`asserts video is UploadingVideo`), so
+         + `upload_id` is narrowed to `string` in later code. It also rej
+         +ects `uploading` with a `null` `upload_id`, which the state mac
+         +hine never produces.                                           
+      93 +  - `INVALID_PART_NUMBER` is checked before `ListParts` (pure i
+         +nput check, no I/O). The plan lists the steps in the other orde
+         +r, but the response is the same. Explicit `partNumbers` are sig
+         +ned in ascending order.                                        
+      94 +  - `updated_at` is touched with `update({ id, processing_statu
+         +s: 'uploading' }, { updated_at: () => 'CURRENT_TIMESTAMP' })`. 
+         +It uses the DB clock, like the column default, so no app/DB clo
+         +ck skew. It runs after the presign, so a failed presign does no
+         +t count as activity.                                           
+      95 
+      96  ### SI-03.10 — Endpoint POST /videos/:id/upload/complete
+      97  - **Status:** pending
+
+⏺ SI-03.9 está concluído (2d85eec). Agora sigo para o SI-03.10, começando pelo
+  storage: headObject passa a devolver contentType e o NoSuchUpload vira um erro
+  do próprio módulo. · summary
+
+⏺ Bash(sed -n 70,150p src/storage/storage.service.integration-spec.ts)
+  ⎿  (No output)
+
+⏺ Write(src/storage/storage.errors.ts)
+  ⎿  Wrote 10 lines to src/storage/storage.errors.ts
+       1 /**
+       2  * The multipart upload no longer exists in storage (S3 `NoSuchU
+         pload`): it was
+       3  * already completed or aborted. Callers map it to their own dom
+         ain state.
+       4  */
+       5 export class MultipartUploadNotFoundError extends Error {
+       6   constructor(key: string, uploadId: string) {
+       7     super(`Multipart upload ${uploadId} of ${key} no longer exis
+         ts`);
+     … +3 lines (ctrl+o to expand)
+
+⏺ Bash(python3 - <<'EOF'
+      p='src/storage/storage.service.ts'…)
+  ⎿  Updated src/storage/storage.service.integration-spec.ts +24 -1
+      2  import { ConfigModule, type ConfigType } from '@nestjs/config';
+      3  import { Test, type TestingModule } from '@nestjs/testing';
+      4  import storageConfig from '../config/storage.config';
+      5 +import { MultipartUploadNotFoundError } from './storage.errors';
+      6  import { StorageModule } from './storage.module';
+      7  import { StorageService } from './storage.service';
+      8 
+     ...
+      106      createdObjects.push({ bucket: config.videosBucket, key });
+      107 
+      108      const head = await storage.headObject(config.videosBucket,
+            key);
+      108 -    expect(head).toEqual({ contentLength: first.length + last.
+          -length });                                                    
+      109 +    expect(head).toEqual({                                    
+      110 +      contentLength: first.length + last.length,              
+      111 +      contentType: 'video/mp4',                               
+      112 +    });                                                       
+      113 +  });                                                         
+      114 +                                                              
+      115 +  it('should throw MultipartUploadNotFoundError when completin
+          +g an upload that is already gone', async () => {              
+      116 +    const key = newKey();                                     
+      117 +    const uploadId = await storage.createMultipartUpload(key, 
+          +'video/mp4');                                                 
+      118 +    const url = await storage.presignUploadPart(              
+      119 +      key,                                                    
+      120 +      uploadId,                                               
+      121 +      1,                                                      
+      122 +      URL_TTL_SECONDS,                                        
+      123 +    );                                                        
+      124 +    const eTag = await putPart(url, bytes(1024, 3));          
+      125 +    await storage.abortMultipartUpload(key, uploadId);        
+      126 +                                                              
+      127 +    await expect(                                             
+      128 +      storage.completeMultipartUpload(key, uploadId, [        
+      129 +        { partNumber: 1, eTag },                              
+      130 +      ]),                                                     
+      131 +    ).rejects.toBeInstanceOf(MultipartUploadNotFoundError);   
+      132    });
+      133 
+      134    it('should list no parts for a freshly created multipart upl
+           oad', async () => {
+  ⎿  Updated src/storage/storage.service.ts +27 -14
+      17  import type { ConfigType } from '@nestjs/config';
+      18  import storageConfig from '../config/storage.config';
+      19  import { S3_INTERNAL_CLIENT, S3_PUBLIC_CLIENT } from './storage
+          .constants';
+      20 +import { MultipartUploadNotFoundError } from './storage.errors'
+         +;                                                              
+      21 
+      22  export interface UploadedPart {
+      23    partNumber: number;
+     ...
+      32 
+      33  export interface ObjectHead {
+      34    contentLength: number;
+      35 +  contentType: string | null;                                  
+      36  }
+      37 
+      38  export interface PresignGetObjectOptions {
+     ...
+      113      return parts;
+      114    }
+      115 
+      116 +  /** Throws `MultipartUploadNotFoundError` when the upload is
+          + already gone. */                                             
+      117    async completeMultipartUpload(
+      118      key: string,
+      119      uploadId: string,
+      120      parts: CompletedPart[],
+      121    ): Promise<void> {
+      122      const ordered = [...parts].sort((a, b) => a.partNumber - b
+           .partNumber);
+      120 -    await this.internalClient.send(                           
+      121 -      new CompleteMultipartUploadCommand({                    
+      122 -        Bucket: this.videosBucket,                            
+      123 -        Key: key,                                             
+      124 -        UploadId: uploadId,                                   
+      125 -        MultipartUpload: {                                    
+      126 -          Parts: ordered.map((part) => ({                     
+      127 -            PartNumber: part.partNumber,                      
+      128 -            ETag: part.eTag,                                  
+      129 -          })),                                                
+      130 -        },                                                    
+      131 -      }),                                                     
+      132 -    );                                                        
+      123 +    try {                                                     
+      124 +      await this.internalClient.send(                         
+      125 +        new CompleteMultipartUploadCommand({                  
+     … +31 lines (ctrl+o to expand)
+
+⏺ Storage verde (13, incluindo o novo caso MultipartUploadNotFoundError). Agora
+  o completeUpload no service:
+
+⏺ Bash(python3 - <<'EOF'
+      p='src/videos/videos.constants.ts'…)
+  ⎿  Updated src/videos/videos.constants.ts +7
+       6 
+       7  /** Attempts to insert a video with a fresh `public_id` on a un
+          ique collision. */
+       8  export const MAX_PUBLIC_ID_ATTEMPTS = 5;
+       9 +                                                               
+      10 +/**                                                            
+      11 + * Upper bound for enqueueing `process-video` after `complete` 
+         +commits. BullMQ's                                              
+      12 + * `add` waits indefinitely while Redis is unreachable, so a ti
+         +meout counts as                                                
+      13 + * an enqueue failure (see the phase plan, POST /videos/:id/upl
+         +oad/complete).                                                 
+      14 + */                                                            
+      15 +export const ENQUEUE_TIMEOUT_MS = 3000;                        
+  ⎿  Updated src/videos/videos.service.ts +166 -1
+      1  import { randomUUID } from 'crypto';
+      2 +import { InjectQueue } from '@nestjs/bullmq';                   
+      3  import { Inject, Injectable, Logger } from '@nestjs/common';
+      4  import type { ConfigType } from '@nestjs/config';
+      5  import { InjectRepository } from '@nestjs/typeorm';
+      6 +import type { Queue } from 'bullmq';                            
+      7  import {
+      8    DataSource,
+      9    EntityManager,
+     ...
+      11    Repository,
+      12  } from 'typeorm';
+      13  import { ChannelsService } from '../channels/channels.service';
+      14 +import storageConfig from '../config/storage.config';          
+      15  import videoConfig from '../config/video.config';
+      13 -import { StorageService } from '../storage/storage.service';   
+      16 +import {                                                       
+      17 +  PROCESS_VIDEO_JOB,                                           
+      18 +  VIDEO_PROCESSING_QUEUE,                                      
+      19 +  processVideoJobOptions,                                      
+      20 +  type ProcessVideoJobData,                                    
+      21 +} from '../queue/queue.constants';                             
+      22 +import { MultipartUploadNotFoundError } from '../storage/storag
+         +e.errors';                                                     
+      23 +import {                                                       
+      24 +  StorageService,                                              
+      25 +  type CompletedPart,                                          
+      26 +  type UploadedPart,                                           
+      27 +} from '../storage/storage.service';                           
+      28  import type { InitiateUploadResponseDto } from './dto/initiate-
+          upload-response.dto';
+      29  import type { InitiateUploadDto } from './dto/initiate-upload.d
+          to';
+      30  import type { PartUrlDto } from './dto/part-url.dto';
+      31  import type { PartUrlsResponseDto } from './dto/part-urls-respo
+          nse.dto';
+      32  import type { PartUrlsDto } from './dto/part-urls.dto';
+      33 +import type { VideoResponseDto } from './dto/video-response.dto
+         +';                                                             
+      34  import {
+      35    Video,
+      36 +  VideoFailureReason,                                          
+      37    VideoProcessingStatus,
+      38    VideoPublicationStatus,
+      39  } from './entities/video.entity';
+      40  import { generatePublicId } from './public-id.util';
+     … +171 lines (ctrl+o to expand)
+
+⏺ Rota do complete no controller:
+
+⏺ Bash(python3 - <<'EOF'
+      p='src/videos/videos.controller.ts'…)
+  ⎿  Updated src/videos/videos.controller.ts +49
+      22  import { InitiateUploadDto } from './dto/initiate-upload.dto';
+      23  import { PartUrlsResponseDto } from './dto/part-urls-response.d
+          to';
+      24  import { PartUrlsDto } from './dto/part-urls.dto';
+      25 +import { VideoResponseDto } from './dto/video-response.dto';   
+      26  import { VideosService } from './videos.service';
+      27 
+      28  const ERROR_SCHEMA = { $ref: getSchemaPath(ApiErrorEnvelope) };
+     ...
+      120    ): Promise<PartUrlsResponseDto> {
+      121      return this.videosService.signPartUrls(id, user.sub, dto);
+      122    }
+      123 +                                                              
+      124 +  @Post(':id/upload/complete')                                
+      125 +  @HttpCode(HttpStatus.ACCEPTED)                              
+      126 +  @ApiBearerAuth('access-token')                              
+      127 +  @ApiOperation({                                             
+      128 +    summary: 'Complete a video upload',                       
+      129 +    description:                                              
+      130 +      'Closes the multipart upload from the parts stored in st
+          +orage (no body; client ETags are not needed), checks every par
+          +t size against the declared size, moves the video to `processi
+          +ng` and enqueues background processing.',                     
+      131 +  })                                                          
+      132 +  @ApiResponse({                                              
+      133 +    status: 202,                                              
+      134 +    description: 'Upload completed; processing queued',       
+      135 +    type: VideoResponseDto,                                   
+      136 +  })                                                          
+      137 +  @ApiResponse({                                              
+      138 +    status: 400,                                              
+      139 +    description: 'Validation failed (id is not a uuid)',      
+      140 +    schema: ERROR_SCHEMA,                                     
+      141 +  })                                                          
+      142 +  @ApiResponse({                                              
+      143 +    status: 401,                                              
+      144 +    description: 'Missing or invalid access token',           
+      145 +    schema: ERROR_SCHEMA,                                     
+      146 +  })                                                          
+      147 +  @ApiResponse({                                              
+      148 +    status: 404,                                              
+      149 +    description:                                              
+      150 +      'Video not found or not owned by the caller (VIDEO_NOT_F
+          +OUND)',                                                       
+      151 +    schema: ERROR_SCHEMA,                                     
+      152 +  })                                                          
+     … +19 lines (ctrl+o to expand)
+
+⏺ Unit tests do completeUpload (inclui o timeout com fake timers):
+
+⏺ Bash(python3 - <<'EOF'
+      p='src/videos/videos.service.spec.ts'…)
+  ⎿  Updated src/videos/videos.service.spec.ts +215
+       1 +import { getQueueToken } from '@nestjs/bullmq';                
+       2 +import { Logger } from '@nestjs/common';                       
+       3  import { Test } from '@nestjs/testing';
+       4  import { getRepositoryToken } from '@nestjs/typeorm';
+       5  import { DataSource, QueryFailedError } from 'typeorm';
+       6  import { ChannelsService } from '../channels/channels.service';
+       7 +import storageConfig from '../config/storage.config';          
+       8  import videoConfig from '../config/video.config';
+       9 +import {                                                       
+      10 +  PROCESS_VIDEO_JOB,                                           
+      11 +  VIDEO_PROCESSING_QUEUE,                                      
+      12 +} from '../queue/queue.constants';                             
+      13 +import { MultipartUploadNotFoundError } from '../storage/storag
+         +e.errors';                                                     
+      14  import { StorageService } from '../storage/storage.service';
+      15  import type { InitiateUploadDto } from './dto/initiate-upload.d
+          to';
+      16  import {
+     ...
+      24    ChannelNotFoundException,
+      25    InvalidPartNumberException,
+      26    InvalidVideoStateException,
+      27 +  UploadIncompleteException,                                   
+      28 +  UploadSizeMismatchException,                                 
+      29    VideoNotFoundException,
+      30    VideoTooLargeException,
+      31  } from './videos.exceptions';
+     ...
+      37  const CHANNEL_ID = 'channel-1';
+      38  const UPLOAD_ID = 'upload-1';
+      39  const VIDEO_ID = '0b6f3a8e-6f25-4d5e-9a57-0d7cbe0f4c11';
+      40 +const STORAGE_CONFIG = {                                       
+      41 +  videosBucket: 'videos-test',                                 
+      42 +  thumbnailsBucket: 'thumbnails-test',                         
+      43 +  publicEndpoint: 'http://minio.localhost:9000',               
+      44 +};                                                             
+      45 
+      46  const DEFAULT_CONFIG = {
+      47    maxUploadBytes: 10 * GIB,
+     ...
+      124      abortMultipartUpload: jest.Mock;
+      125      presignUploadPart: jest.Mock;
+      126      listAllParts: jest.Mock;
+      127 +    completeMultipartUpload: jest.Mock;                       
+      128 +    headObject: jest.Mock;                                    
+     … +219 lines (ctrl+o to expand)
+
+⏺ Unit verde (37). Integração do complete com MinIO e Redis reais:
+
+⏺ Bash(python3 - <<'EOF'
+      p='src/videos/videos.service.integration-spec.ts'…)
+  ⎿  Updated src/videos/videos.service.integration-spec.ts +83
+      1  import { randomUUID } from 'crypto';
+      2 +import { getQueueToken } from '@nestjs/bullmq';                 
+      3  import { ConfigModule } from '@nestjs/config';
+      4  import { Test, type TestingModule } from '@nestjs/testing';
+      5  import { TypeOrmModule } from '@nestjs/typeorm';
+      6 +import type { Queue } from 'bullmq';                            
+      7  import { DataSource, IsNull, Not, Repository } from 'typeorm';
+      8  import { RefreshToken } from '../auth/entities/refresh-token.ent
+         ity';
+      9  import { VerificationToken } from '../auth/entities/verification
+         -token.entity';
+     ...
+      11  import queueConfig from '../config/queue.config';
+      12  import storageConfig from '../config/storage.config';
+      13  import videoConfig from '../config/video.config';
+      14 +import {                                                       
+      15 +  PROCESS_VIDEO_JOB,                                           
+      16 +  VIDEO_PROCESSING_QUEUE,                                      
+      17 +} from '../queue/queue.constants';                             
+      18  import { StorageService } from '../storage/storage.service';
+      19  import {
+      20    cleanAllTables,
+     ...
+      31  import * as publicIdUtil from './public-id.util';
+      32  import {
+      33    ActiveUploadLimitReachedException,
+      34 +  UploadSizeMismatchException,                                 
+      35    VideoNotFoundException,
+      36  } from './videos.exceptions';
+      37  import { VideosModule } from './videos.module';
+     ...
+      56    let storage: StorageService;
+      57    let dataSource: DataSource;
+      58    let videoRepository: Repository<Video>;
+      59 +  let processingQueue: Queue;                                  
+      60 
+      61    async function createUserWithChannel(
+      62      label: string,
+     ...
+      101      storage = moduleRef.get(StorageService);
+      102      dataSource = moduleRef.get(DataSource);
+      103      videoRepository = dataSource.getRepository(Video);
+      104 +    processingQueue = moduleRef.get<Queue>(                   
+      105 +      getQueueToken(VIDEO_PROCESSING_QUEUE),                  
+      106 +    );                                                        
+      107    }, 30000);
+     … +78 lines (ctrl+o to expand)
+
+⏺ Integração verde (10). Agora o e2e do spec videos-upload-complete.plan.md (7
+  cenários, incluindo o Redis simulado fora do ar via jest.spyOn(queue, 'add'),
+  como o plano prevê):
+
+⏺ Write(test/videos-upload-complete.e2e-spec.ts)
+  ⎿  Wrote 288 lines to test/videos-upload-complete.e2e-spec.ts
+       1 import { randomUUID } from 'crypto';
+       2 import { getQueueToken } from '@nestjs/bullmq';
+       3 import { Logger } from '@nestjs/common';
+       4 import type { Queue } from 'bullmq';
+       5 import request from 'supertest';
+       6 import type { ApiErrorEnvelope } from '../src/common/openapi/api
+         -error-envelope.dto';
+       7 import { VIDEO_PROCESSING_QUEUE } from '../src/queue/queue.const
+         ants';
+       8 import { cleanAllTables } from '../src/test/create-test-data-sou
+     … +281 lines (~9 KB) (ctrl+o to expand)
+
+⏺ Bash(docker compose exec -T nestjs-api npx eslint --fix src/videos src/storage
+      test/videos-upload-complete.e2e-spec.ts 2>&1 | tail -10; docker compose
+      exec -T nestjs…)
+  ⎿  Updated src/storage/storage.service.integration-spec.ts +1 -3
+      125      await storage.abortMultipartUpload(key, uploadId);
+      126 
+      127      await expect(
+      128 -      storage.completeMultipartUpload(key, uploadId, [        
+      129 -        { partNumber: 1, eTag },                              
+      130 -      ]),                                                     
+      128 +      storage.completeMultipartUpload(key, uploadId, [{ partNu
+          +mber: 1, eTag }]),                                            
+      129      ).rejects.toBeInstanceOf(MultipartUploadNotFoundError);
+      130    });
+      131 
+  ⎿  Updated src/videos/videos.controller.ts +1 -2
+      146    })
+      147    @ApiResponse({
+      148      status: 404,
+      149 -    description:                                              
+      150 -      'Video not found or not owned by the caller (VIDEO_NOT_F
+          -OUND)',                                                       
+      149 +    description: 'Video not found or not owned by the caller (
+          +VIDEO_NOT_FOUND)',                                            
+      150      schema: ERROR_SCHEMA,
+      151    })
+      152    @ApiResponse({
+  ⎿  Updated src/videos/videos.service.integration-spec.ts +4 -1
+      297        expect(row.upload_id).toBeNull();
+      298        await expect(
+      299          storage.headObject('videos-test', row.source_key),
+      300 -      ).resolves.toEqual({ contentLength: 10 * MIB, contentTyp
+          -e: 'video/webm' });                                           
+      300 +      ).resolves.toEqual({                                    
+      301 +        contentLength: 10 * MIB,                              
+      302 +        contentType: 'video/webm',                            
+      303 +      });                                                     
+      304 
+      305        const job = await processingQueue.getJob(initiated.video
+           Id);
+      306        expect(job?.name).toBe(PROCESS_VIDEO_JOB);
+  ⎿  Updated src/videos/videos.service.spec.ts +9 -5
+      544        );
+      545        expect(videoRepository.update).toHaveBeenCalledWith(
+      546          { id: VIDEO_ID, processing_status: VideoProcessingStat
+           us.UPLOADING },
+      547 -        { processing_status: VideoProcessingStatus.PROCESSING,
+          - upload_id: null },                                           
+      547 +        {                                                     
+      548 +          processing_status: VideoProcessingStatus.PROCESSING,
+      549 +          upload_id: null,                                    
+      550 +        },                                                    
+      551        );
+      552        expect(processingQueue.add).toHaveBeenCalledWith(
+      553          PROCESS_VIDEO_JOB,
+     ...
+      579          await jest.advanceTimersByTimeAsync(3000);
+      580          const result = await pending;
+      581 
+      579 -        expect(result.processingStatus).toBe(                 
+      580 -          VideoProcessingStatus.PROCESSING,                   
+      581 -        );                                                    
+      582 +        expect(result.processingStatus).toBe(VideoProcessingSt
+          +atus.PROCESSING);                                             
+      583          expect(errorSpy).toHaveBeenCalledWith(
+      584            expect.stringContaining(VIDEO_ID),
+      585            expect.stringContaining('Timed out after 3000 ms'),
+     ...
+      639      it.each([
+      640        ['a middle part is smaller than partSize', [4 * MIB, 6 *
+            MIB, 2 * MIB]],
+      641        ['the last part is shorter than the remainder', [5 * MIB
+           , 5 * MIB, MIB]],
+      641 -      ['the last part is longer than the remainder', [5 * MIB,
+          - 5 * MIB, 3 * MIB]],                                          
+      642 +      [                                                       
+      643 +        'the last part is longer than the remainder',         
+      644 +        [5 * MIB, 5 * MIB, 3 * MIB],                          
+      645 +      ],                                                      
+      646      ])(
+      647        'should reject UPLOAD_SIZE_MISMATCH before completing wh
+           en %s',
+      648        async (_case, sizes) => {
+  ⎿  Updated test/videos-upload-complete.e2e-spec.ts +12 -16
+       94    it('todas-as-partes-enviadas-retorna-202-e-enfileira-job', a
+           sync () => {
+       95      const initiated = await uploadTwoFullParts();
+       96 
+       97 -    const res = await postComplete(                           
+       98 -      initiated.videoId,                                      
+       99 -      owner.accessToken,                                      
+      100 -    ).expect(202);                                            
+       97 +    const res = await postComplete(initiated.videoId, owner.ac
+          +cessToken).expect(                                            
+       98 +      202,                                                    
+       99 +    );                                                        
+      100 
+      101      const body = res.body as VideoResponseDto;
+      102      expect(body).toMatchObject({
+     ...
+      132      const initiated = await uploadTwoFullParts();
+      133      await postComplete(initiated.videoId, owner.accessToken).e
+           xpect(202);
+      134 
+      136 -    const res = await postComplete(                           
+      137 -      initiated.videoId,                                      
+      138 -      owner.accessToken,                                      
+      139 -    ).expect(409);                                            
+      135 +    const res = await postComplete(initiated.videoId, owner.ac
+          +cessToken).expect(                                            
+      136 +      409,                                                    
+      137 +    );                                                        
+      138 
+      139      expect(res.body).toEqual({
+      140        statusCode: 409,
+     ...
+      201      });
+      202      expect((await putPart(initiated.parts[0].url, 5 * MIB)).st
+           atus).toBe(200);
+      203 
+      206 -    const res = await postComplete(                           
+      207 -      initiated.videoId,                                      
+      208 -      owner.accessToken,                                      
+      209 -    ).expect(409);                                            
+      204 +    const res = await postComplete(initiated.videoId, owner.ac
+          +cessToken).expect(                                            
+      205 +      409,                                                    
+      206 +    );                                                        
+      207      expect(res.body).toMatchObject({
+      208        error: 'UPLOAD_INCOMPLETE',
+      209        message: 'Upload is missing parts: 2',
+     ...
+      230      });
+     … +12 lines (ctrl+o to expand)
+
+⏺ 7/7 (o caso de Redis pendente responde em ~3 s, como o timeout prevê). Re-rodo
+  o conjunto do SI após o autofix:
+
+⏺ Bash(docker compose exec -T nestjs-api npx jest --runInBand src/videos
+      src/storage 2>&1 | grep -E "^Tests:|^Test Suites:|●"; docker compose exec
+      -T nestjs-api npm ru…)
+  ⎿  (No output)
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project && python3 - <<'EOF'
+      p='docs/phases/phase-03-videos/progress.md'…)
+  ⎿  Updated ~/Documents/projects/full-cycle/mba-ia-greenfield-project/docs
+     /phases/phase-03-videos/progress.md +11 -4
+      1  # phase-03-videos — Progress
+      2 
+      3  **Status:** in_progress
+      4 -**SIs:** 9/21 completed                                         
+      4 +**SIs:** 10/21 completed                                        
+      5 
+      6  ### SI-03.1 — Infra: dependências, namespaces de configuração e
+         variáveis de ambiente
+      7  - **Status:** completed
+     ...
+       94    - `updated_at` is touched with `update({ id, processing_stat
+           us: 'uploading' }, { updated_at: () => 'CURRENT_TIMESTAMP' })`
+           . It uses the DB clock, like the column default, so no app/DB
+           clock skew. It runs after the presign, so a failed presign doe
+           s not count as activity.
+       95 
+       96  ### SI-03.10 — Endpoint POST /videos/:id/upload/complete
+       97 -- **Status:** pending                                         
+       98 -- **Tests:** —                                                
+       99 -- **Observations:** none                                      
+       97 +- **Status:** completed                                       
+       98 +- **Tests:** 25 new, passing for the SI: `src/videos/videos.se
+          +rvice.spec.ts` +11 (37 total), `src/videos/videos.service.inte
+          +gration-spec.ts` +3 (10 total), `test/videos-upload-complete.e
+          +2e-spec.ts` 7 (the 7 spec scenarios), `src/storage/storage.ser
+          +vice.integration-spec.ts` +1 (13 total). Re-run: `src/videos` 
+          ++ `src/storage` 91/91, uploads + part-urls + complete e2e 22/2
+          +2                                                             
+       99 +- **Observations:**                                           
+      100 +  - **Storage extensions:** `headObject` now returns `{ conten
+          +tLength, contentType }`. The integration test checks `ContentT
+          +ype = mime_type` (`video/webm` → `video/webm`), and the SI-03.
+          +5 assertion was updated. `completeMultipartUpload` maps S3 `No
+          +SuchUpload` to a new storage error, `MultipartUploadNotFoundEr
+          +ror` (`src/storage/storage.errors.ts`). The videos service map
+          +s that error to `InvalidVideoStateException`, so the domain ne
+          +ver inspects S3 SDK error names. A new storage integration tes
+          +t proves the mapping against MinIO (complete after abort).    
+      101 +  - **Plan wording, no behavior change:** API Contracts step 4
+          + says to "re-read the row" after `NoSuchUpload`, but both outc
+          +omes (row no longer `uploading`, or still `uploading`) answer 
+          +`INVALID_VIDEO_STATE`. The re-read would not change the respon
+          +se, so it was not implemented. The SI's Technical action 2 ("e
+          +m NoSuchUpload, lança InvalidVideoStateException") is followed
+          + as written. The unit test covers `NoSuchUpload` → 409 with no
+          + update and no enqueue. Since there is no re-read, "row alread
+          +y out of `uploading`" and "row still `uploading`" are the same
+          + code path.                                                   
+      102 +  - Per-part size check before `CompleteMultipartUpload`: part
+          +s `1..partCount-1` must be exactly `partSize`, and the last pa
+          +rt must be `size_bytes − (partCount − 1) × partSize`. Any othe
+          +r size → `422`, and the row stays `uploading`. Parts listed ab
+          +ove `partCount` (the API never signs them) are left out of the
+          + complete call.                                               
+      103 +  - HeadObject backstop: if the object is missing, has the wro
+          +ng size, or is over the max → `deleteObject`, a conditional up
+          +date to `failed`/`UPLOAD_SIZE_MISMATCH`/`upload_id = null`, th
+          +en `422`.                                                     
+      104 +  - Enqueue: `Promise.race` between `queue.add(...)` and a 3 s
+          + timer (`ENQUEUE_TIMEOUT_MS` in `videos.constants.ts`). The ti
+          +mer is cleared in `finally`. `Promise.race` subscribes to `add
+          +`, so a late rejection is not left unhandled. The `catch` call
+          +s `logger.error` (message with `videoId`, plus the stack) and 
+          +has a comment citing the plan section. The e2e "Redis not answ
+          +ering" case answers `202` in ~3.1 s.                          
+      105 +  - The spec's integration test "sweep re-enqueues the orphane
+          +d row" belongs to SI-03.19 (maintenance sweep), not this SI.  
+      106 +  - `toResponse(video)` (`toVideoResponse` + `thumbnailUrl` vi
+          +a `publicObjectUrl` when `thumbnail_key` is set) was added her
+          +e, because the `202` body is a `VideoResponse`. SI-03.12 reuse
+          +s it and owns its unit test.                                  
+      107 
+      108  ### SI-03.11 — Endpoint DELETE /videos/:id/upload
+      109  - **Status:** pending
+
+⏺ SI-03.10 concluído (2c15b9a). Sigo para o SI-03.11 — DELETE
+  /videos/:id/upload:
+
+⏺ Bash(python3 - <<'EOF'
+      p='src/videos/videos.service.ts'…)  ⎿  Updated src/videos/videos.controller.ts +38
+      1  import {
+      2    Body,
+      3    Controller,
+      4 +  Delete,                                                       
+      5    HttpCode,
+      6    HttpStatus,
+      7    Param,
+     ...
+      168    ): Promise<VideoResponseDto> {
+      169      return this.videosService.completeUpload(id, user.sub);
+      170    }
+      171 +                                                              
+      172 +  @Delete(':id/upload')                                       
+      173 +  @HttpCode(HttpStatus.NO_CONTENT)                            
+      174 +  @ApiBearerAuth('access-token')                              
+      175 +  @ApiOperation({                                             
+      176 +    summary: 'Abort a video upload',                          
+      177 +    description:                                              
+      178 +      'Aborts the in-progress multipart upload, discarding the
+          + stored parts, and marks the video as failed (UPLOAD_ABORTED).
+          + Frees one active-upload slot of the channel.',               
+      179 +  })                                                          
+      180 +  @ApiResponse({ status: 204, description: 'Upload aborted' })
+      181 +  @ApiResponse({                                              
+      182 +    status: 400,                                              
+      183 +    description: 'Validation failed (id is not a uuid)',      
+      184 +    schema: ERROR_SCHEMA,                                     
+      185 +  })                                                          
+      186 +  @ApiResponse({                                              
+      187 +    status: 401,                                              
+      188 +    description: 'Missing or invalid access token',           
+      189 +    schema: ERROR_SCHEMA,                                     
+      190 +  })                                                          
+      191 +  @ApiResponse({                                              
+      192 +    status: 404,                                              
+      193 +    description:                                              
+      194 +      'Video not found or not owned by the caller (VIDEO_NOT_F
+          +OUND)',                                                       
+      195 +    schema: ERROR_SCHEMA,                                     
+      196 +  })                                                          
+      197 +  @ApiResponse({                                              
+      198 +    status: 409,                                              
+      199 +    description: 'The video is not uploading (INVALID_VIDEO_ST
+          +ATE)',                                                        
+      200 +    schema: ERROR_SCHEMA,                                     
+     … +8 lines (ctrl+o to expand)
+  ⎿  Updated src/videos/videos.service.integration-spec.ts +37
+      351        expect(row.upload_id).toBe(initiated.uploadId);
+      352      });
+      353    });
+      354 +                                                              
+      355 +  describe('abortUpload', () => {                             
+      356 +    it('should mark the row failed/UPLOAD_ABORTED with a null 
+          +upload_id and abort the multipart upload in storage', async ()
+          + => {                                                         
+      357 +      const { userId } = await createUserWithChannel('owner');
+      358 +      const initiated = await service.initiateUpload(userId, i
+          +nitiateDto());                                                
+      359 +      await putPart(initiated.parts[0].url, 5 * MIB);         
+      360 +                                                              
+      361 +      await service.abortUpload(initiated.videoId, userId);   
+      362 +                                                              
+      363 +      const row = await videoRepository.findOneByOrFail({     
+      364 +        id: initiated.videoId,                                
+      365 +      });                                                     
+      366 +      expect(row.processing_status).toBe(VideoProcessingStatus
+          +.FAILED);                                                     
+      367 +      expect(row.failure_reason).toBe('UPLOAD_ABORTED');      
+      368 +      expect(row.upload_id).toBeNull();                       
+      369 +      await expect(                                           
+      370 +        storage.listAllParts(row.source_key, initiated.uploadI
+          +d),                                                           
+      371 +      ).rejects.toMatchObject({ name: 'NoSuchUpload' });      
+      372 +    });                                                       
+      373 +                                                              
+      374 +    it('should let a channel at the active-upload limit start 
+          +a new upload right after an abort', async () => {             
+      375 +      const { userId } = await createUserWithChannel('owner');
+      376 +      const initiated = [];                                   
+      377 +      for (let i = 0; i < MAX_ACTIVE_UPLOADS; i++) {          
+      378 +        initiated.push(await service.initiateUpload(userId, in
+          +itiateDto()));                                                
+      379 +      }                                                       
+      380 +      await expect(                                           
+      381 +        service.initiateUpload(userId, initiateDto()),        
+      382 +      ).rejects.toBeInstanceOf(ActiveUploadLimitReachedExcepti
+          +on);                                                          
+      383 +                                                              
+      384 +      await service.abortUpload(initiated[0].videoId, userId);
+      385 +                                                              
+      386 +      await expect(                                           
+      387 +        service.initiateUpload(userId, initiateDto()),        
+      388 +      ).resolves.toMatchObject({ partCount: 2 });             
+      389 +    });                                                       
+      390 +  });                                                         
+     … +1 line (ctrl+o to expand)
+  ⎿  Updated src/videos/videos.service.ts +23
+      275      return this.toResponse(await this.reload(video.id));
+      276    }
+      277 
+      278 +  /**                                                         
+      279 +   * Owner abort: frees the storage space of the parts and the
+          + channel's                                                    
+      280 +   * active-upload slot. An upload already gone from storage i
+          +s not an error.                                               
+      281 +   */                                                         
+      282 +  async abortUpload(id: string, userId: string): Promise<void>
+          + {                                                            
+      283 +    const video = await this.findOwnedOrFail(id, userId);     
+      284 +    this.assertUploading(video);                              
+      285 +                                                              
+      286 +    await this.storageService.abortMultipartUpload(           
+      287 +      video.source_key,                                       
+      288 +      video.upload_id,                                        
+      289 +    );                                                        
+      290 +    const transition = await this.videoRepository.update(     
+      291 +      { id: video.id, processing_status: VideoProcessingStatus
+          +.UPLOADING },                                                 
+      292 +      {                                                       
+      293 +        processing_status: VideoProcessingStatus.FAILED,      
+      294 +        failure_reason: VideoFailureReason.UPLOAD_ABORTED,    
+      295 +        upload_id: null,                                      
+      296 +      },                                                      
+      297 +    );                                                        
+      298 +    if (!transition.affected) throw new InvalidVideoStateExcep
+          +tion();                                                       
+      299 +  }                                                           
+      300 +                                                              
+      301    /**
+      302     * Every part in `1..partCount` must be stored with its exac
+           t size: `partSize`
+      303     * for all but the last, the remainder for the last (which a
+           lso pins the
+
+⏺ Bash(python3 - <<'EOF'
+      p='src/videos/videos.service.integration-spec.ts'…)
+  ⎿  Updated src/videos/videos.service.integration-spec.ts +1 -1
+      373 
+      374      it('should let a channel at the active-upload limit start 
+           a new upload right after an abort', async () => {
+      375        const { userId } = await createUserWithChannel('owner');
+      376 -      const initiated = [];                                   
+      376 +      const initiated: { videoId: string }[] = [];            
+      377        for (let i = 0; i < MAX_ACTIVE_UPLOADS; i++) {
+      378          initiated.push(await service.initiateUpload(userId, in
+           itiateDto()));
+      379        }
+
+⏺ Integração verde (12) e tsc limpo. E2e do spec videos-upload-abort.plan.md (6
+  cenários):
+
+⏺ Write(test/videos-upload-abort.e2e-spec.ts)
+  ⎿  Wrote 177 lines to test/videos-upload-abort.e2e-spec.ts
+       1 import { randomUUID } from 'crypto';
+       2 import request from 'supertest';
+       3 import type { ApiErrorEnvelope } from '../src/common/openapi/api
+         -error-envelope.dto';
+       4 import { cleanAllTables } from '../src/test/create-test-data-sou
+         rce';
+       5 import type { InitiateUploadResponseDto } from '../src/videos/dt
+         o/initiate-upload-response.dto';
+       6 import {
+       7   Video,
+     … +170 lines (ctrl+o to expand)
+
+⏺ Bash(docker compose exec -T nestjs-api npx eslint --fix src/videos
+      test/videos-upload-abort.e2e-spec.ts 2>&1 | tail -10; docker compose exec
+      -T nestjs-api npx tsc --…)
+  ⎿  Updated src/videos/videos.controller.ts +1 -2
+      190    })
+      191    @ApiResponse({
+      192      status: 404,
+      193 -    description:                                              
+      194 -      'Video not found or not owned by the caller (VIDEO_NOT_F
+          -OUND)',                                                       
+      193 +    description: 'Video not found or not owned by the caller (
+          +VIDEO_NOT_FOUND)',                                            
+      194      schema: ERROR_SCHEMA,
+      195    })
+      196    @ApiResponse({
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project && python3 - <<'EOF'
+      p='docs/phases/phase-03-videos/progress.md'…)
+  ⎿  Updated ~/Documents/projects/full-cycle/mba-ia-greenfield-project/docs
+     /phases/phase-03-videos/progress.md +6 -4
+      1  # phase-03-videos — Progress
+      2 
+      3  **Status:** in_progress
+      4 -**SIs:** 10/21 completed                                        
+      4 +**SIs:** 11/21 completed                                        
+      5 
+      6  ### SI-03.1 — Infra: dependências, namespaces de configuração e
+         variáveis de ambiente
+      7  - **Status:** completed
+     ...
+      106    - `toResponse(video)` (`toVideoResponse` + `thumbnailUrl` vi
+           a `publicObjectUrl` when `thumbnail_key` is set) was added her
+           e, because the `202` body is a `VideoResponse`. SI-03.12 reuse
+           s it and owns its unit test.
+      107 
+      108  ### SI-03.11 — Endpoint DELETE /videos/:id/upload
+      109 -- **Status:** pending                                         
+      110 -- **Tests:** —                                                
+      111 -- **Observations:** none                                      
+      109 +- **Status:** completed                                       
+      110 +- **Tests:** 7 new, passing for the SI: `src/videos/videos.ser
+          +vice.integration-spec.ts` +2 (12 total), `test/videos-upload-a
+          +bort.e2e-spec.ts` 5 (the 5 spec scenarios). Re-run: `src/video
+          +s` 80/80                                                      
+      111 +- **Observations:**                                           
+      112 +  - The `failed`/`UPLOAD_ABORTED`/`upload_id = null` transitio
+          +n is a conditional update (`WHERE id AND processing_status = '
+          +uploading'`). 0 affected rows → `INVALID_VIDEO_STATE`, the sam
+          +e guard as `complete`. The plan does not spell this out for ab
+          +ort. It covers a concurrent `complete` that commits between th
+          +e check and the update. In that case the multipart upload is a
+          +lready completed, the abort is tolerated (`NoSuchUpload`), and
+          + the video stays `processing`.                                
+      113 +  - After the abort, MinIO answers the PUT to the old part URL
+          + with `404` and an XML body containing `NoSuchUpload`. The e2e
+          + asserts both. The integration test checks that `listAllParts`
+          + of the aborted upload rejects with `name: 'NoSuchUpload'`. Th
+          +at is the raw S3 error; only `completeMultipartUpload` maps it
+          + to a storage error.                                          
+      114 
+      115  ### SI-03.12 — Endpoint GET /videos/:id
+      116  - **Status:** pending
+
+⏺ SI-03.11 concluído (26666dc). Sigo para o último do bloco, SI-03.12 — GET
+  /videos/:id:
+
+⏺ Bash(python3 - <<'EOF'
+      p='src/videos/videos.service.ts'…)
+  ⎿  Updated src/videos/videos.controller.ts +36
+      2    Body,
+      3    Controller,
+      4    Delete,
+      5 +  Get,                                                          
+      6    HttpCode,
+      7    HttpStatus,
+      8    Param,
+     ...
+      205    ): Promise<void> {
+      206      await this.videosService.abortUpload(id, user.sub);
+      207    }
+      208 +                                                              
+      209 +  @Get(':id')                                                 
+      210 +  @ApiBearerAuth('access-token')                              
+      211 +  @ApiOperation({                                             
+      212 +    summary: 'Get one of my videos',                          
+      213 +    description:                                              
+      214 +      'Returns the current status and metadata of a video owne
+          +d by the caller. Used to poll processing after completing the 
+          +upload.',                                                     
+      215 +  })                                                          
+      216 +  @ApiResponse({                                              
+      217 +    status: 200,                                              
+      218 +    description: 'The video in its current status',           
+      219 +    type: VideoResponseDto,                                   
+      220 +  })                                                          
+      221 +  @ApiResponse({                                              
+      222 +    status: 400,                                              
+      223 +    description: 'Validation failed (id is not a uuid)',      
+      224 +    schema: ERROR_SCHEMA,                                     
+      225 +  })                                                          
+      226 +  @ApiResponse({                                              
+      227 +    status: 401,                                              
+      228 +    description: 'Missing or invalid access token',           
+      229 +    schema: ERROR_SCHEMA,                                     
+      230 +  })                                                          
+      231 +  @ApiResponse({                                              
+      232 +    status: 404,                                              
+      233 +    description:                                              
+      234 +      'Video not found or not owned by the caller (VIDEO_NOT_F
+          +OUND)',                                                       
+      235 +    schema: ERROR_SCHEMA,                                     
+      236 +  })                                                          
+      237 +  async getOwned(                                             
+     … +6 lines (ctrl+o to expand)
+  ⎿  Updated src/videos/videos.service.spec.ts +50
+      680        expect(processingQueue.add).not.toHaveBeenCalled();
+      681      });
+      682    });
+      683 +                                                              
+      684 +  describe('getOwned', () => {                                
+      685 +    it('should build thumbnailUrl with publicObjectUrl on the 
+          +thumbnails bucket when thumbnail_key is set', async () => {   
+      686 +      videoRepository.findOne.mockResolvedValue(              
+      687 +        videoFixture({                                        
+      688 +          processing_status: VideoProcessingStatus.READY,     
+      689 +          upload_id: null,                                    
+      690 +          thumbnail_key: `${VIDEO_ID}/default.jpg`,           
+      691 +        }),                                                   
+      692 +      );                                                      
+      693 +                                                              
+      694 +      const result = await service.getOwned(VIDEO_ID, USER_ID)
+          +;                                                             
+      695 +                                                              
+      696 +      expect(storageService.publicObjectUrl).toHaveBeenCalledW
+          +ith(                                                          
+      697 +        'thumbnails-test',                                    
+      698 +        `${VIDEO_ID}/default.jpg`,                            
+      699 +      );                                                      
+      700 +      expect(result.thumbnailUrl).toBe(                       
+      701 +        `http://minio.localhost:9000/thumbnails-test/${VIDEO_I
+          +D}/default.jpg`,                                              
+      702 +      );                                                      
+      703 +    });                                                       
+      704 +                                                              
+      705 +    it('should return a null thumbnailUrl when there is no thu
+          +mbnail_key', async () => {                                    
+      706 +      const result = await service.getOwned(VIDEO_ID, USER_ID)
+          +;                                                             
+      707 +                                                              
+      708 +      expect(result.thumbnailUrl).toBeNull();                 
+      709 +      expect(storageService.publicObjectUrl).not.toHaveBeenCal
+          +led();                                                        
+      710 +    });                                                       
+      711 +                                                              
+      712 +    it('should answer any status, not only uploading', async (
+          +) => {                                                        
+      713 +      videoRepository.findOne.mockResolvedValue(              
+      714 +        videoFixture({                                        
+      715 +          processing_status: VideoProcessingStatus.FAILED,    
+      716 +          upload_id: null,                                    
+      717 +        }),                                                   
+      718 +      );                                                      
+      719 +                                                              
+     … +14 lines (ctrl+o to expand)
+  ⎿  Updated src/videos/videos.service.ts +5
+      275      return this.toResponse(await this.reload(video.id));
+      276    }
+      277 
+      278 +  /** Owner-only detail and status, polled while the video is 
+          +processed. */                                                 
+      279 +  async getOwned(id: string, userId: string): Promise<VideoRes
+          +ponseDto> {                                                   
+      280 +    return this.toResponse(await this.findOwnedOrFail(id, user
+          +Id));                                                         
+      281 +  }                                                           
+      282 +                                                              
+      283    /**
+      284     * Owner abort: frees the storage space of the parts and the
+            channel's
+      285     * active-upload slot. An upload already gone from storage i
+           s not an error.
+
+⏺ E2e do spec videos-detail.plan.md (5 cenários):
+
+⏺ Write(test/videos-detail.e2e-spec.ts)
+  ⎿  Wrote 181 lines to test/videos-detail.e2e-spec.ts
+       1 import { randomUUID } from 'crypto';
+       2 import request from 'supertest';
+       3 import type { ApiErrorEnvelope } from '../src/common/openapi/api
+         -error-envelope.dto';
+       4 import { StorageService } from '../src/storage/storage.service';
+       5 import { cleanAllTables } from '../src/test/create-test-data-sou
+         rce';
+       6 import type { InitiateUploadResponseDto } from '../src/videos/dt
+         o/initiate-upload-response.dto';
+       7 import type { VideoResponseDto } from '../src/videos/dto/video-r
+     … +175 lines (~5 KB) (ctrl+o to expand)
+
+⏺ Bash(docker compose exec -T nestjs-api npx eslint --fix src/videos
+      test/videos-detail.e2e-spec.ts 2>&1 | tail -10; docker compose exec -T
+      nestjs-api npx tsc --noEmit…)
+  ⎿  Updated src/videos/videos.controller.ts +1 -2
+      230    })
+      231    @ApiResponse({
+      232      status: 404,
+      233 -    description:                                              
+      234 -      'Video not found or not owned by the caller (VIDEO_NOT_F
+          -OUND)',                                                       
+      233 +    description: 'Video not found or not owned by the caller (
+          +VIDEO_NOT_FOUND)',                                            
+      234      schema: ERROR_SCHEMA,
+      235    })
+      236    async getOwned(
+  ⎿  Updated src/videos/videos.service.spec.ts +4 -3
+      717          }),
+      718        );
+      719 
+      720 -      await expect(service.getOwned(VIDEO_ID, USER_ID)).resolv
+          -es.toMatchObject(                                             
+      721 -        { id: VIDEO_ID, processingStatus: VideoProcessingStatu
+          -s.FAILED },                                                   
+      722 -      );                                                      
+      720 +      await expect(service.getOwned(VIDEO_ID, USER_ID)).resolv
+          +es.toMatchObject({                                            
+      721 +        id: VIDEO_ID,                                         
+      722 +        processingStatus: VideoProcessingStatus.FAILED,       
+      723 +      });                                                     
+      724      });
+      725 
+      726      it('should reject VIDEO_NOT_FOUND for a video of another c
+           hannel', async () => {
+  ⎿  Updated test/videos-detail.e2e-spec.ts +4 -3
+      152    // 2. Autorização e validação (hide, don't forbid)
+      153 
+      154    it('nao-dono-e-id-inexistente-recebem-404-identico', async (
+           ) => {
+      155 -    const nonOwner = await getVideo(initiated.videoId, other.a
+          -ccessToken).expect(                                           
+      156 -      404,                                                    
+      157 -    );                                                        
+      155 +    const nonOwner = await getVideo(                          
+      156 +      initiated.videoId,                                      
+      157 +      other.accessToken,                                      
+      158 +    ).expect(404);                                            
+      159      expect(nonOwner.body).toEqual({
+      160        statusCode: 404,
+      161        error: 'VIDEO_NOT_FOUND',
+
+⏺ Verde. progress.md + commit do SI-03.12:
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project && python3 - <<'EOF'
+      p='docs/phases/phase-03-videos/progress.md'…)
+  ⎿  Updated ~/Documents/projects/full-cycle/mba-ia-greenfield-project/docs
+     /phases/phase-03-videos/progress.md +7 -4
+      1  # phase-03-videos — Progress
+      2 
+      3  **Status:** in_progress
+      4 -**SIs:** 11/21 completed                                        
+      4 +**SIs:** 12/21 completed                                        
+      5 
+      6  ### SI-03.1 — Infra: dependências, namespaces de configuração e
+         variáveis de ambiente
+      7  - **Status:** completed
+     ...
+      113    - After the abort, MinIO answers the PUT to the old part URL
+            with `404` and an XML body containing `NoSuchUpload`. The e2e
+            asserts both. The integration test checks that `listAllParts`
+            of the aborted upload rejects with `name: 'NoSuchUpload'`. Th
+           at is the raw S3 error; only `completeMultipartUpload` maps it
+            to a storage error.
+      114 
+      115  ### SI-03.12 — Endpoint GET /videos/:id
+      116 -- **Status:** pending                                         
+      117 -- **Tests:** —                                                
+      118 -- **Observations:** none                                      
+      116 +- **Status:** completed                                       
+      117 +- **Tests:** 9 new, passing for the SI: `src/videos/videos.ser
+          +vice.spec.ts` +4 (41 total), `test/videos-detail.e2e-spec.ts` 
+          +5 (the 5 spec scenarios)                                      
+      118 +- **Observations:**                                           
+      119 +  - `getOwned` = `findOwnedOrFail` + the `toResponse` added in
+          + SI-03.10. There is no state check: the owner sees any `proces
+          +sing_status`. The unit tests here cover `toResponse`'s `thumbn
+          +ailUrl` branch: `publicObjectUrl(thumbnailsBucket, thumbnail_k
+          +ey)` when `thumbnail_key` is set, otherwise `null` with no sto
+          +rage call.                                                    
+      120 +  - The e2e thumbnail scenario writes a 4-byte JPEG frame to `
+          +thumbnails-test` with `StorageService.putObject` (`ContentType
+          +: image/jpeg`). An anonymous `fetch` of `thumbnailUrl` returns
+          + `200` + `image/jpeg`, with no `X-Amz-*` in the URL. The objec
+          +t is deleted in a `finally`.                                  
+      121 +  - The e2e checks that the body has no `uploadId`/`upload_id`
+          +/`sourceKey`/`source_key`/`channelId`/`channel_id`. The mapper
+          + never copies them, so this guards against a future regression
+          +.                                                             
+      122 
+      123  ### SI-03.13 — Guard de autenticação opcional (`@OptionalAuth`
+           )
+      124  - **Status:** pending
+
+⏺ SI-03.12 está concluído (commit 98506f7) e os 5 SIs do bloco já foram feitos.
+  Como instruído, não sigo para SI-03.13; antes de parar, faço a verificação
+  completa no container (suíte unit e integração, e2e, tsc e lint). · summary
+
+⏺ Bash(docker compose exec -T nestjs-api npm test -- --runInBand 2>&1 | grep -E
+      "^Tests:|^Test Suites:|FAIL|●|did not exit|open handle" | head -30)
+  ⎿  (No output)
+
+⏺ Bash(docker compose exec -T nestjs-api npm run test:e2e 2>&1 | grep -E
+      "^Tests:|^Test Suites:|FAIL|●|did not exit|open handle|PASS" | head -30)
+  ⎿  (No output)
+
+⏺ Bash(docker compose exec -T nestjs-api npx tsc --noEmit; echo "tsc exit=$?";
+      docker compose exec -T nestjs-api npm run lint 2>&1 | tail -8; echo "lint
+      exit=${pipesta…)
+  ⎿  (No output)
+
+⏺ Bloco W4.3 concluído: SI-03.8 a SI-03.12 implementados, cada um com seus
+  testes verdes e commit local. Respondi NÃO em "Seguir para SI-03.13?" e parei.
+  Nada foi enviado com push.
+
+  Verificação final no container:
+
+  ┌───────────────────────────────┬─────────────────────────────────────────┐
+  │          Verificação          │                Resultado                │
+  ├───────────────────────────────┼─────────────────────────────────────────┤
+  │ npm test -- --runInBand (unit │ 272/272, 34 suites (eram 218 no fim do  │
+  │  + integração)                │ W4.2)                                   │
+  ├───────────────────────────────┼─────────────────────────────────────────┤
+  │ npm run test:e2e              │ 84/84, 8 suites (eram 52; os 5 specs    │
+  │                               │ novos somam os 32 cenários)             │
+  ├───────────────────────────────┼─────────────────────────────────────────┤
+  │ npx tsc --noEmit              │ código de saída 0                       │
+  ├───────────────────────────────┼─────────────────────────────────────────┤
+  │ npm run lint                  │ código de saída 0, sem nenhuma mudança  │
+  │                               │ na árvore                               │
+  └───────────────────────────────┴─────────────────────────────────────────┘
+
+  Nenhum job ficou no Redis com o prefixo bull:.
+
+  Resumo em 5 linhas:
+  1. Commits: 57a0c80 (03.8), 2d85eec (03.9), 2c15b9a (03.10), 26666dc (03.11),
+     98506f7 (03.12). Cada um leva código + progress.md, com git add explícito e
+     sem Co-Authored-By.
+  2. Testes: 30 cenários e2e seguem os specs, um arquivo por target_file; mais 2
+     testes extras que cobrem dois ACs do SI-03.8 (413 e 429). Os pontos que
+     você ajustou foram seguidos: ContentType no multipart, título padrão a
+     partir do fileName, retry com SAVEPOINT, tamanho checado parte a parte
+     (422, nunca 500), enqueue com teto de 3 s cujo erro é logado e engolido,
+     rotas de vídeo com @SkipThrottle, 404 idêntico para não-dono e token
+     expirado via expiresIn: -60.
+  3. Desvios do plano (registrados nas Observations):
+     - Depois de um NoSuchUpload, não releio a linha: as duas respostas
+       possíveis eram o mesmo 409.
+     - O NoSuchUpload do complete agora vira um erro do próprio módulo de
+       storage (MultipartUploadNotFoundError), para o domínio de vídeos não
+       depender de nomes de erro do S3.
+     - O abort usa update condicional (0 linhas afetadas → 409).
+     - INVALID_PART_NUMBER é checado antes do ListParts.
+     - Criei o helper test/support/videos-e2e.ts, compartilhado pelas 5 suítes.
+  4. Pendências:
+     - O teste "a varredura reenfileira a linha órfã" é do SI-03.19.
+     - O e2e deixa multiparts abertos no bucket videos-test.
+     - O helper de unique violation está duplicado em relação ao
+       ChannelsService; dá para unificar junto com a correção do SAVEPOINT que o
+       plano já prevê como tarefa separada.
+     - O aviso do pg ("client already executing a query") já existia antes deste
+       bloco.
+  5. Processo: a tool TaskCreate não existe nesta sessão, então acompanhei só
+     pelo progress.md. Também rodei os testes direto na sessão, em vez de
+     delegar a um subagente como a skill /implement pede, sempre filtrando a
+     saída para manter falhas e diffs.
