@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 6/21 completed
+**SIs:** 7/21 completed
 
 ### SI-03.1 — Infra: dependências, namespaces de configuração e variáveis de ambiente
 - **Status:** completed
@@ -64,9 +64,14 @@
   - `BullModule.forRootAsync` has no `imports: [ConfigModule]`. It relies on the global `ConfigModule` (`AppModule`, and later `WorkerModule`), per `.claude/rules/nestjs-testing.md`.
 
 ### SI-03.7 — Fundações do domínio de vídeos (exceções, `publicId`, resposta e lookup de canal)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 32 passing (`public-id.util.spec.ts` 7, `video-response.mapper.spec.ts` 4, `videos.exceptions.spec.ts` 11, `videos.module.spec.ts` 1, `channels.service.integration-spec.ts` 9 = 4 existing + 5 new). End of block W4.2: full `npm test` 218/218 (32 suites), full `npm run test:e2e` 52/52 (3 suites, covers "the API starts with `VideosModule` and `GET /` → 200"), `tsc --noEmit` 0, `npm run lint` 0
+- **Observations:**
+  - Extra test file, not in the plan's table: `src/videos/videos.exceptions.spec.ts`. It runs each of the 9 exceptions through the real `DomainExceptionFilter` and checks `{ statusCode, error, message }` literally against the Error Catalog. It is the observable test for the AC "each video exception is rendered as …". `UploadIncompleteException(missing)` builds the message `Upload is missing parts: 1, 2, …` with at most 20 numbers, then `, …` (the rule SI-03.10 cites), so the format lives in the exception.
+  - `ChannelsService.findIdByUserId` / `lockIdByUserId` select only `id`. The lock uses `lock: { mode: 'pessimistic_write' }` (`FOR UPDATE`). The test proves that a second connection gets `55P03` with `FOR UPDATE NOWAIT` while the transaction is open and gets the lock after commit, and that outside a transaction TypeORM throws `PessimisticLockTransactionRequiredError`.
+  - `VideoResponseDto` has explicit `@ApiProperty` on all 19 fields: it is a response DTO, so the Swagger plugin has no validator to infer from (`.claude/rules/nestjs-dtos.md`). Nullable fields declare `type` + `nullable: true`.
+  - `videos.module.spec.ts` keeps the plan's name and the existing `*.module.spec.ts` pattern (e.g. `channels.module.spec.ts`), even though it opens Postgres + Redis. That diverges from the suffix rule in `nestjs-project/CLAUDE.md` (DB I/O ⇒ `*.integration-spec.ts`); the inconsistency predates this phase.
+  - Every suite that loads `AppModule`/`VideosModule` leaves only the `test:video-processing:meta` and `test:video-maintenance:meta` hashes in Redis (written by `Queue` on connect; bullmq version, no jobs). Under the `test` prefix they never touch `bull:*`.
 
 ### SI-03.8 — Endpoint POST /videos/uploads
 - **Status:** pending

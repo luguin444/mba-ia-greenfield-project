@@ -1,4 +1,9 @@
-import { DataSource, Repository } from 'typeorm';
+import {
+  DataSource,
+  PessimisticLockTransactionRequiredError,
+  QueryFailedError,
+  Repository,
+} from 'typeorm';
 import { RefreshToken } from '../auth/entities/refresh-token.entity';
 import { VerificationToken } from '../auth/entities/verification-token.entity';
 import {
@@ -88,6 +93,73 @@ describe('ChannelsService (integration)', () => {
 
       const channels = await channelRepository.find();
       expect(channels).toHaveLength(2);
+    });
+  });
+
+  describe('findIdByUserId', () => {
+    it("returns the id of the user's channel", async () => {
+      const user = await createUser();
+      const channel = await channelsService.createChannel(user.id, user.email);
+
+      await expect(channelsService.findIdByUserId(user.id)).resolves.toBe(
+        channel.id,
+      );
+    });
+
+    it('returns null for a user without a channel', async () => {
+      const user = await createUser();
+
+      await expect(channelsService.findIdByUserId(user.id)).resolves.toBeNull();
+    });
+  });
+
+  describe('lockIdByUserId', () => {
+    it("returns the channel id and holds a row lock until the caller's transaction ends", async () => {
+      const user = await createUser();
+      const channel = await channelsService.createChannel(user.id, user.email);
+      let competingError: unknown;
+
+      await dataSource.transaction(async (manager) => {
+        await expect(
+          channelsService.lockIdByUserId(manager, user.id),
+        ).resolves.toBe(channel.id);
+
+        // A second connection cannot take the same row lock meanwhile.
+        competingError = await dataSource
+          .query('SELECT id FROM "channels" WHERE id = $1 FOR UPDATE NOWAIT', [
+            channel.id,
+          ])
+          .catch((err: unknown) => err);
+      });
+
+      expect(competingError).toBeInstanceOf(QueryFailedError);
+      expect(
+        (competingError as QueryFailedError & { code?: string }).code,
+      ).toBe('55P03');
+      await expect(
+        dataSource.query(
+          'SELECT id FROM "channels" WHERE id = $1 FOR UPDATE NOWAIT',
+          [channel.id],
+        ),
+      ).resolves.toHaveLength(1);
+    });
+
+    it('returns null for a user without a channel', async () => {
+      const user = await createUser();
+
+      await dataSource.transaction(async (manager) => {
+        await expect(
+          channelsService.lockIdByUserId(manager, user.id),
+        ).resolves.toBeNull();
+      });
+    });
+
+    it('refuses to run outside a transaction', async () => {
+      const user = await createUser();
+
+      await expect(
+        channelsService.lockIdByUserId(dataSource.manager, user.id),
+      ).rejects.toBeInstanceOf(PessimisticLockTransactionRequiredError);
     });
   });
 });

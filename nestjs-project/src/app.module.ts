@@ -8,6 +8,7 @@ import { configLoad } from './config/config-load';
 import databaseConfig from './config/database.config';
 import { envValidationSchema } from './config/env.validation';
 import { QueueModule } from './queue/queue.module';
+import { VideosModule } from './videos/videos.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { QueueModule } from './queue/queue.module';
     }),
     QueueModule,
     AuthModule,
+    VideosModule,
   ],
   controllers: [AppController],
   providers: [AppService],
