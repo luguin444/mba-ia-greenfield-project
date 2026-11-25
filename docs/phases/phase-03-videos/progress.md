@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 4/21 completed
+**SIs:** 5/21 completed
 
 ### SI-03.1 — Infra: dependências, namespaces de configuração e variáveis de ambiente
 - **Status:** completed
@@ -46,9 +46,13 @@
   - `Video` was added to `ALL_ENTITIES` in all 10 existing specs. Prettier reflowed only the touched lines.
 
 ### SI-03.5 — Módulo de storage (adapter S3 com client interno e público)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 12 passing (`src/storage/storage.module.spec.ts` 1 + `src/storage/storage.service.integration-spec.ts` 11, real MinIO, `-test` buckets)
+- **Observations:**
+  - Two `S3Client` providers (`S3_INTERNAL_CLIENT` → `S3_ENDPOINT`, `S3_PUBLIC_CLIENT` → `S3_PUBLIC_ENDPOINT`), both with `forcePathStyle: true` and `requestChecksumCalculation: 'WHEN_REQUIRED'`. The test asserts that part URLs carry no `x-amz-checksum*`. `StorageService.onModuleDestroy` calls `destroy()` on both clients, so no HTTP sockets are left open.
+  - `headObject` returns `null` for both `NotFound` and `NoSuchKey`. `abortMultipartUpload` tolerates only `NoSuchUpload`, and MinIO returns that name when the same `uploadId` is aborted twice. Every other S3 error propagates.
+  - AC "the same URL is valid from inside `nestjs-api` and from the host": checked by hand. A GET presigned by the public client with `Range: bytes=0-99` returned `206` / 100 bytes from Node `fetch` in the container and from `curl` on the host. The probe object and script were removed.
+  - Note for SI-03.8/03.14: `createMultipartUpload(key)` follows the plan's signature, which sends no `ContentType`. The source object is stored with MinIO's default type, and the presigned GET for playback returns that type, not `video/*`. If the browser player needs it, pass `mime_type` at initiate (a decision for the leader; not changed here).
 
 ### SI-03.6 — Módulo de fila (BullMQ) compartilhado entre API e worker
 - **Status:** pending
