@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 2/21 completed
+**SIs:** 3/21 completed
 
 ### SI-03.1 — Infra: dependências, namespaces de configuração e variáveis de ambiente
 - **Status:** completed
@@ -25,9 +25,14 @@
   - `redis:8-alpine` is kept as a tag, per the plan. Only the Chainguard images are digest-pinned.
 
 ### SI-03.3 — Infra: isolamento do ambiente de teste e `--runInBand` no `test:e2e`
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 2 passing (`src/test/setup-test-env.spec.ts`)
+- **Observations:**
+  - `jest --showConfig` confirms that both configs resolve `setupFiles` to `dotenv/config` → `/home/node/app/src/test/setup-test-env.ts`, in that order (e2e `rootDir` = `/home/node/app/test`, as the plan states).
+  - The re-application test uses `jest.isolateModules` + `jest.requireActual`. A dynamic `import()` fails under ts-jest CommonJS (`nodenext` keeps a native `import()`, which needs `--experimental-vm-modules`), and a raw `require` is blocked by lint.
+  - Outside Jest, the container still reads `QUEUE_PREFIX=bull`, `S3_VIDEOS_BUCKET=videos` and `S3_THUMBNAILS_BUCKET=thumbnails` from `.env`. The override exists only in the Jest process.
+  - `test/jest-e2e.json` was edited by hand to keep the existing inline array formatting (no cosmetic diff).
+  - Out of scope, for the SI-03.21 docs pass: `nestjs-project/CLAUDE.md` → "Test execution" still says to run `npm test -- --runInBand` and that e2e is "already configured". Both scripts now include `--runInBand`.
 
 ### SI-03.4 — Entidade `Video`, migration `CreateVideos` e ajustes nos testes existentes
 - **Status:** pending
