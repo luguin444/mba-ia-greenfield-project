@@ -1,0 +1,1459 @@
+
+❯ <browser_instruction># Claude in Chrome browser automation
+
+  You have access to browser automation tools (mcp__claude-in-chrome__*) for
+  interacting with web pages in Chrome. Follow these guidelines for effective
+  browser automation.
+
+  ## Loading deferred tools
+
+  If the mcp__claude-in-chrome__* tools are deferred (must be loaded via
+  ToolSearch before use), load every tool you expect to need in ONE ToolSearch
+  call — the select query accepts a comma-separated list — never one call per
+  tool. Start with the core set:
+
+  ToolSearch with query
+  "select:mcp__claude-in-chrome__tabs_context_mcp,mcp__claude-in-chrome__naviga
+  te,mcp__claude-in-chrome__computer,mcp__claude-in-chrome__read_page,mcp__clau
+  de-in-chrome__tabs_create_mcp,mcp__claude-in-chrome__tabs_close_mcp"
+
+  Add task-specific tools to the same call when the task obviously needs them:
+  read_console_messages / read_network_requests for debugging, form_input for
+  forms, gif_creator for recordings, javascript_tool for page scripting.
+
+  ## GIF recording
+
+  When performing multi-step browser interactions that the user may want to
+  review or share, use mcp__claude-in-chrome__gif_creator to record them.
+
+  You must ALWAYS:
+  * Capture extra frames before and after taking actions to ensure smooth
+  playback
+  * Name the file meaningfully to help the user identify it later (e.g.,
+  "login_process.gif")
+
+  ## Console log debugging
+
+  You can use mcp__claude-in-chrome__read_console_messages to read console
+  output. Console output may be verbose. If you are looking for specific log
+  entries, use the 'pattern' parameter with a regex-compatible pattern. This
+  filters results efficiently and avoids overwhelming output. For example, use
+  pattern: "[MyApp]" to filter for application-specific logs rather than
+  reading all console output.
+
+  ## Alerts and dialogs
+
+  IMPORTANT: Do not trigger JavaScript alerts, confirms, prompts, or browser
+  modal dialogs through your actions. These browser dialogs block all further
+  browser events and will prevent the extension from receiving any subsequent
+  commands. Instead, when possible, use console.log for debugging and then use
+  the mcp__claude-in-chrome__read_console_messages tool to read those log
+  messages. If a page has dialog-triggering elements:
+  1. Avoid clicking buttons or links that may trigger alerts (e.g., "Delete"
+  buttons with confirmation dialogs)
+  2. If you must interact with such elements, warn the user first that this may
+  interrupt the session
+  3. Use mcp__claude-in-chrome__javascript_tool to check for and dismiss any
+  existing dialogs before proceeding
+
+  If you accidentally trigger a dialog and lose responsiveness, inform the user
+  they need to manually dismiss it in the browser.
+
+  ## Avoid rabbit holes and loops
+
+  When using browser automation tools, stay focused on the specific task. If
+  you encounter any of the following, stop and ask the user for guidance:
+  - Unexpected complexity or tangential browser exploration
+  - Browser tool calls failing or returning errors after 2-3 attempts
+  - No response from the browser extension
+  - Page elements not responding to clicks or input
+  - Pages not loading or timing out
+  - Unable to complete the browser task despite multiple approaches
+
+  Explain what you attempted, what went wrong, and ask how the user would like
+  to proceed. Do not keep retrying the same failing browser action or explore
+  unrelated pages without checking in first.
+
+  ## Tab context and session startup
+
+  IMPORTANT: At the start of each browser automation session, call
+  mcp__claude-in-chrome__tabs_context_mcp first to get information about the
+  user's current browser tabs. Use this context to understand what the user
+  might want to work with before creating new tabs.
+
+  Never reuse tab IDs from a previous/other session. Follow these guidelines:
+  1. Only reuse an existing tab if the user explicitly asks to work with it
+  2. Otherwise, create a new tab with mcp__claude-in-chrome__tabs_create_mcp
+  3. If a tool returns an error indicating the tab doesn't exist or is invalid,
+  call tabs_context_mcp to get fresh tab IDs
+  4. When a tab is closed by the user or a navigation error occurs, call
+  tabs_context_mcp to see what tabs are available</browser_instruction>
+
+❯ Fase 03, branch feature/phase-03-videos. O líder aplicou correções de revisão
+  no decisions doc (só **Note:**), no plano, no library-refs e em 3 specs
+  (commits 187d8d9, 81dea9f, 2ce1c8a). Esta sessão só re-sincroniza o pipeline.
+  Não edite nada à mão.
+
+  1. /plan-context phase-03-videos: na pergunta de UI escolha deferred
+  (backend-only); no correlator marque só
+  technical-decisions-openapi-docs-nestjs.
+  2. /plan-validate phase-03-videos: o esperado é status: clean. Se aparecer
+  qualquer issue, PARE e me traga, sem rodar o resolve.
+  3. /plan-test-specs phase-03-videos: deve surgir um cenário NOVO só para o AC
+  #8 do SI-03.8 (título padrão a partir do fileName, e título informado com
+  trim). NÃO gere cenário para o AC #2 do SI-03.8 (10 GiB, verificado só no
+  unitário). Avisos de UPDATED nos cenários existentes são esperados (o líder
+  ajustou os textos).
+
+  Um commit por estágio (docs: refresh phase 03 context, docs: phase 03
+  validation (iteration 3), docs: add phase 03 title default test scenario),
+  sem Co-Authored-By, git add explícito, sem push.
+  No fim: /export 19-pipeline-sync-phase-03.txt e um resumo de 3 linhas.
+
+⏺ I'll start by locating the pipeline commands (plan-context, plan-validate,
+  plan-test-specs), since they aren't in my skills list.
+
+⏺ Bash(git status --short && git log --oneline -3 && ls .claude/
+      .claude/commands .claude/skills 2>/dev/null; ls ~/.claude/commands
+      2>/dev/null | head -50)
+  ⎿  (No output)
+
+⏺ Skill(plan-context)
+  ⎿  Claude couldn't run /plan-context. It runs only when you type it at the
+     prompt.
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project/.claude/skills && grep -H "disable-model-invocation"
+      plan-context/SKILL.md p…)
+  ⎿  (No output)
+
+⏺ Não consegui iniciar nenhum dos três estágios. plan-context, plan-validate e
+  plan-test-specs têm disable-model-invocation: true no SKILL.md, e a ferramenta
+  Skill recusou a primeira chamada com a instrução de não reproduzir o fluxo
+  por outros meios. Por isso não refiz o pipeline à mão, o que também respeita o
+  seu "não edite nada à mão".
+
+  Nada foi alterado: o branch feature/phase-03-videos continua limpo, com o
+  último commit em 2ce1c8a.
+
+  Os comandos precisam ser digitados por você, um de cada vez:
+
+  1. /plan-context phase-03-videos: na pergunta de UI escolha deferred
+     (backend-only); no correlator marque só
+     technical-decisions-openapi-docs-nestjs.
+  2. /plan-validate phase-03-videos: o esperado é status: clean. Se aparecer
+     qualquer issue, eu paro e trago para você, sem rodar o resolve.
+  3. /plan-test-specs phase-03-videos: confiro que surge um cenário novo só para
+     o AC #8 do SI-03.8, nenhum para o AC #2, e que os avisos de UPDATED são os
+     esperados.
+  4. /export 19-pipeline-sync-phase-03.txt: esse é um comando nativo do CLI,
+     então também fica com você.
+
+  Depois de cada estágio, se você me pedir, faço o commit correspondente (docs:
+  refresh phase 03 context, docs: phase 03 validation (iteration 3), docs: add
+  phase 03 title default test scenario). Antes, confiro o diff, uso git add com
+  os arquivos explícitos, não coloco Co-Authored-By e não dou push. No fim,
+  mando o resumo de 3 linhas.
+
+❯ /plan-context phase-03-videos
+
+⏺ Running /plan-context phase-03-videos. Starting with preflight: the slice's
+  decisions doc frontmatter and the shared pipeline conventions.
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project && sed -n '1,40p'
+      docs/decisions/technical-decisions-phase-03-videos.md | se…)
+  ⎿  (No output)
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+⏺ Slice has no covers_capabilities, so I'm using the monolithic fallback.
+  Reading the bounded Fase 03 section from project-plan.md to compute
+  scope_prose and the UI signal.
+
+⏺ Bash(s=$(grep -n '^### Fase 03' docs/project-plan.md | cut -d: -f1); e=$(awk
+      -v s="$s" 'NR>s && /^### /{print NR; exit}' docs/project-plan.md); sed -n
+      "${s},$((e-1))…)
+  ⎿  (No output)
+
+⏺ The UI signal fired because "arquivos" matched, and no screen inventory file
+  exists, so I'm deferring the UI step with ui_deferred set to true and
+  dispatching the five subagents now. · summary
+
+⏺ 5 background agents launched (↓ to manage)
+   ├ plan-reader (plan-reader phase 03)
+   ├ decisions-reader (decisions-reader phase 03)
+   ├ decisions-detail-reader (decisions-detail-reader phase 03)
+   ├ decisions-correlator (decisions-correlator phase 03)
+   └ phases-reader (phases-reader phase 03)
+
+⏺ While the subagents run, I'm loading the testing guide for Step 5.
+  nestjs-project is the subproject in scope.
+
+⏺ Skill(testing-guide-nestjs-project)
+  ⎿  Loaded skill
+
+⏺ Testing guide loaded. To match the existing format, I'm reading the tail
+  sections of the current context.md (Inherited Conventions → Testing
+  Requirements).
+
+⏺ Bash(sed -n '60,82p;300,400p' docs/phases/phase-03-videos/context.md)
+  ⎿  (No output)
+
+⏺ Waiting for the 5 subagents to return.
+
+⏺ Bash(ls docs/decisions/technical-decisions-*.md | xargs -n1 basename; for f in
+      docs/project-plan.md
+      docs/decisions/technical-decisions-phase-03-videos.md docs/decisi…)
+  ⎿  (No output)
+
+⏺ T_caller = 8 decisions docs. Waiting on the subagent notifications.
+
+› Message from decisions-correlator
+  ## Correlated for Phase 03 / slice phase-03-videos
+
+  | File | Slug | Score | Rationale |
+  |------|------|-------|-----------|
+  | technical-decisions-openapi-docs-nestjs.md | openapi-docs-nestjs | medium |
+  New NestJS upload, streaming and download endpoints must follow the OpenAPI
+  tooling and artifact strategy decided there |
+  | technical-decisions-next-frontend-config-base.md | next-frontend-config-base
+  | low | Frontend env-var validation does not overlap the backend storage,
+  queue and worker scope of this slice |
+  | technical-decisions-next-frontend-msw-foundation.md |
+  next-frontend-msw-foundation | low | Frontend MSW handler organization does
+  not apply to this backend upload, processing and streaming slice |
+  | technical-decisions-next-frontend-openapi-typing.md |
+  next-frontend-openapi-typing | low | Frontend consumption of the openapi.json
+  artifact is downstream and does not constrain backend video endpoints |
+
+  ### Ranked candidates
+
+  - **openapi-docs-nestjs** (medium): New NestJS upload, streaming and download
+  endpoints must follow the OpenAPI tooling and artifact strategy decided there
+  - **next-frontend-config-base** (low): Frontend env-var validation does not
+  overlap the backend storage, queue and worker scope of this slice
+  - **next-frontend-msw-foundation** (low): Frontend MSW handler organization
+  does not apply to this backend upload, processing and streaming slice
+  - **next-frontend-openapi-typing** (low): Frontend consumption of the
+  openapi.json artifact is downstream and does not constrain backend video
+  endpoints
+
+⏺ The correlator returned 4 candidates. Following your instruction, I'm
+  confirming only openapi-docs-nestjs. Next is a bounded read of its decided
+  TDs, limited to Recommendation, Renders in, Libraries and Revisions.
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+⏺ Agent "decisions-correlator phase 03" finished · 12s
+
+⏺ Bash(sed -n '43,53p;79,84p;110,116p'
+      docs/decisions/technical-decisions-openapi-docs-nestjs.md; echo ----; sed
+      -n '/^## Inherited Decisions Detail/,/^## Inherited Co…)
+  ⎿  (No output)
+
+⏺ I've synthesized the 3 openapi-docs-nestjs TDs. TD-02 and TD-03 have no
+  Libraries line, so they become —. Waiting for the remaining 4 subagents.
+
+› Message from plan-reader
+  ## Phase 03 — Upload e Processamento de Vídeos
+
+  **Capabilities** (literal bullets, verbatim from project-plan.md):
+
+  - Serviço de armazenamento de arquivos (vídeos e thumbnails)
+  - Serviço de processamento em segundo plano (filas)
+  - Upload de vídeos com suporte a arquivos de até 10GB sem impacto na
+  performance
+  - Pré-cadastro automático do vídeo como rascunho ao iniciar o upload
+  - Processamento automático do vídeo após upload (extração de duração e
+  metadados)
+  - Geração automática de thumbnail a partir de um frame do vídeo
+  - URL única por vídeo, sem conflito com outros vídeos
+  - Reprodução via streaming (sem necessidade de download completo)
+  - Download do vídeo pelo usuário
+
+  **Out of scope:** _Not specified._
+
+  **Deliverables:** upload de até 10GB funcional, processamento automático do
+  vídeo, streaming funcionando, URLs únicas geradas.
+
+  **Affected subprojects:**
+
+  _No subproject paths are named in the Phase 03 section._
+
+  **Deferred subprojects:** _None._
+
+  **Sequencing notes:** > Depende de: Fase 01, Fase 02
+
+  ## Neighbors
+
+  - **Phase 02:** Cadastro, Login e Gerenciamento de Conta — "Fluxo completo de
+  criação de conta, confirmação por e-mail, login, logout e recuperação de
+  senha." (Depende de: Fase 01)
+  - **Phase 04:** Gerenciamento de Vídeos e Canal — "Edição das informações do
+  vídeo, fluxo de rascunho e publicação, painel de administração do canal e
+  página pública." (Depende de: Fase 02, Fase 03)
+
+  ---
+  Notes:
+  - Phase headings in ~/Documents/projects/full-cycle/mba
+  -ia-greenfield-project/docs/project-plan.md use level 3 (`### Fase NN — ...`),
+  not `## Fase`. None of the four standard patterns matched, so the headings
+  were found with a broader search. Phase 03 is at lines 67–85.
+  - Phase 03 opening sentence (line 71, verbatim): "Upload de arquivos grandes
+  sem travar o sistema, processamento automático do vídeo e geração de URL
+  única."
+  - The first 3 lines of each neighbor contain only the heading and the "Depende
+  de" line. I read up to 2 more lines for each so the summary could quote its
+  first sentence.
+⏺ I have plan-reader's output. Waiting for decisions-reader,
+  decisions-detail-reader and phases-reader.
+
+⏺ Agent "plan-reader phase 03" finished · 22s
+
+› Message from decisions-reader
+  ## Decisions Index for Phase 03 / slice phase-03-videos
+
+  | Ref | Source | Scope | Topic | Status | Decision | Libraries | Capability |
+  |-----|--------|-------|-------|--------|----------|-----------|------------|
+  | phase-03-videos/TD-01 | phase | Backend | Message Queue Technology | decided
+  | A (BullMQ + Redis via @nestjs/bullmq) | bullmq, @nestjs/bullmq | Serviço de
+  processamento em segundo plano (filas) |
+  | phase-03-videos/TD-02 | phase | Repo-wide | Video Worker Runtime & Container
+  Topology | decided | A (same codebase, separate video-worker container,
+  shared dev image with ffmpeg) | — | Transversal — covers: "Serviço de
+  processamento em segundo plano (filas)", "Processamento automático do vídeo
+  após upload (extração de duração e metadados)", "Geração automática de
+  thumbnail a partir de um frame do vídeo" |
+  | phase-03-videos/TD-03 | phase | Backend | Metadata & Thumbnail Extraction
+  Tooling (FFmpeg/ffprobe) | decided | A (apt ffmpeg/ffprobe + typed execFile
+  wrapper) | — | Transversal — covers: "Processamento automático do vídeo após
+  upload (extração de duração e metadados)", "Geração automática de thumbnail a
+  partir de um frame do vídeo" |
+  | phase-03-videos/TD-04 | phase | Backend | How the Worker Reads the Source
+  Video | decided | A (FFmpeg reads short-lived presigned GET via HTTP Range) |
+  @aws-sdk/s3-request-presigner | Transversal — covers: "Processamento
+  automático do vídeo após upload (extração de duração e metadados)", "Geração
+  automática de thumbnail a partir de um frame do vídeo" |
+  | phase-03-videos/TD-05 | phase | Cross-layer | Upload Protocol for up to 10GB
+  Without Passing Through the… | decided | A (S3 multipart with presigned part
+  URLs, API-orchestrated) | @aws-sdk/client-s3, @aws-sdk/s3-request-presigner |
+  Transversal — covers: "Upload de vídeos com suporte a arquivos de até 10GB sem
+  impacto na performance", "Pré-cadastro automático do vídeo como rascunho ao
+  iniciar o upload" |
+  | phase-03-videos/TD-06 | phase | Backend | Upload Size Limits & Part Sizing
+  (configurable, testable) | decided | A (env-configured limits, server-dictated
+  part size) | — | Upload de vídeos com suporte a arquivos de até 10GB sem
+  impacto na performance |
+  | phase-03-videos/TD-07 | phase | Backend | Object Storage Layout — Buckets,
+  Keys and Presigning Endpo… | decided | B (private videos + public-read
+  thumbnails, keys by videoId, internal/public endpoints) | @aws-sdk/client-s3,
+  @aws-sdk/s3-request-presigner | Serviço de armazenamento de arquivos (vídeos e
+  thumbnails) |
+  | phase-03-videos/TD-08 | phase | Repo-wide | Local S3-Compatible Storage
+  Provisioning (MinIO distributi… | decided | A (Chainguard MinIO,
+  digest-pinned) | — | Serviço de armazenamento de arquivos (vídeos e
+  thumbnails) |
+  | phase-03-videos/TD-09 | phase | Cross-layer | Unique Video URL Identifier |
+  decided | B (random 11-char base64url publicId, UNIQUE) | — | URL única por
+  vídeo, sem conflito com outros vídeos |
+  | phase-03-videos/TD-10 | phase | Cross-layer | Playback (Range/206) and
+  Download Delivery Path | decided | A (presigned GET direct from storage,
+  issued by @Public API endpoint via BFF) | @aws-sdk/client-s3,
+  @aws-sdk/s3-request-presigner | Transversal — covers: "Reprodução via
+  streaming (sem necessidade de download completo)", "Download do vídeo pelo
+  usuário" |
+  | phase-03-videos/TD-11 | phase | Backend | Playback Format (original file vs
+  derived rendition) | decided | A (serve the original, progressive Range) | — |
+  Reprodução via streaming (sem necessidade de download completo) |
+  | phase-03-videos/TD-12 | phase | Backend | Video Status Lifecycle & Failure
+  Handling | decided | B (orthogonal processingStatus + publication, retries,
+  idempotent worker, sweep via BullMQ Job Scheduler) | bullmq, @nestjs/bullmq |
+  Transversal — covers: "Pré-cadastro automático do vídeo como rascunho ao
+  iniciar o upload", "Processamento automático do vídeo após upload (extração de
+  duração e metadados)", "Geração automática de thumbnail a partir de um frame
+  do vídeo" |
+  | phase-03-videos/TD-13 | phase | Backend | Rate-Limit Policy for Video
+  Endpoints | decided | A (@SkipThrottle() on video controllers + per-channel
+  active-upload cap) | @nestjs/throttler | Transversal — covers: "Upload de
+  vídeos com suporte a arquivos de até 10GB sem impacto na performance",
+  "Reprodução via streaming (sem necessidade de download completo)", "Download
+  do vídeo pelo usuário" |
+  | phase-03-videos/TD-14 | phase | Repo-wide | Test Infrastructure for Storage,
+  Queue and Worker | decided | A (real MinIO + Redis in Compose, generated
+  fixtures, worker in-process for e2e) | — | Transversal — covers: "Serviço de
+  armazenamento de arquivos (vídeos e thumbnails)", "Serviço de processamento em
+  segundo plano (filas)", "Upload de vídeos com suporte a arquivos de até 10GB
+  sem impacto na performance", "Processamento automático do vídeo após upload
+  (extração de duração e metadados)", "Geração automática de thumbnail a partir
+  de um frame do vídeo" |
+  | phase-03-videos/TD-15 | phase | Backend | Video Ownership Anchor (channel vs
+  user) | decided | A (Video.channelId) | — | Pré-cadastro automático do vídeo
+  como rascunho ao iniciar o upload |
+  | phase-03-videos/TD-16 | phase | Repo-wide | Presigned URL Host Reachability
+  (browser/host ↔ Compose ne… | decided | A (minio.localhost network alias +
+  same published port) | — | Transversal — covers: "Upload de vídeos com suporte
+  a arquivos de até 10GB sem impacto na performance", "Reprodução via streaming
+  (sem necessidade de download completo)", "Download do vídeo pelo usuário" |
+
+  ## Source Files
+
+  - phase-03-videos — docs/decisions/technical-decisions-phase-03-videos.md
+  (scope_type: phase, related_phases: [3])
+
+  ## Filter Trace
+
+  Globbed T=8 candidates from `docs/decisions/*.md`. Per-file decisions:
+
+  | File | scope_type | related_phases | Decision | Reason |
+  |------|-----------|----------------|----------|--------|
+  | technical-decisions-next-frontend-config-base.md | ad-hoc | ? | dropped |
+  ad-hoc rule: in S_adhoc, not in S_NN |
+  | technical-decisions-next-frontend-msw-foundation.md | ad-hoc | ? | dropped |
+  ad-hoc rule: in S_adhoc, not in S_NN |
+  | technical-decisions-next-frontend-openapi-typing.md | ad-hoc | ? | dropped |
+  ad-hoc rule: in S_adhoc, not in S_NN |
+  | technical-decisions-openapi-docs-nestjs.md | ad-hoc | ? | dropped | ad-hoc
+  rule: in S_adhoc, not in S_NN |
+  | technical-decisions-phase-01-configuracao-base.md | ? | ? | dropped | phase
+  rule: filename-slug != identifier; ad-hoc rule: not in S_adhoc |
+  | technical-decisions-phase-02-auth-frontend.md | ? | ? | dropped | phase
+  rule: filename-slug != identifier; ad-hoc rule: not in S_adhoc |
+  | technical-decisions-phase-02-auth.md | ? | ? | dropped | phase rule:
+  filename-slug != identifier; ad-hoc rule: not in S_adhoc |
+  | technical-decisions-phase-03-videos.md | phase | [3] | kept | phase rule:
+  filename-slug == identifier (S_NN match confirmed) |
+
+⏺ decisions-reader's Filter Trace checks out: T_agent = 8 = T_caller, the file
+  sets match, and only phase-03-videos is kept. Waiting for
+  decisions-detail-reader and phases-reader.
+
+⏺ Agent "decisions-reader phase 03" finished · 33s
+
+› Message from decisions-detail-reader
+  ## Decisions Detail for Phase 03 / slice phase-03-videos
+
+  ### phase-03-videos/TD-01
+
+  **Recommendation:** It is the only option where retries, exponential backoff,
+  `jobId` dedup and failed-job inspection come from the official Nest
+  integration without custom plumbing, and it matches the diagram's separate
+  queue container. The real cost is the non-transactional enqueue: it is covered
+  by an idempotent `jobId = videoId` plus a periodic reconciliation (TD-12).
+  pg-boss (B) is the honest runner-up if the team prefers zero new
+  infrastructure and transactional enqueue over Nest-native ergonomics.
+  **Libraries:** bullmq, @nestjs/bullmq
+
+  ### phase-03-videos/TD-02
+
+  **Recommendation:** Process-level isolation is what "sem impacto na
+  performance" needs at runtime, and sharing the dev image keeps every test,
+  including real ffprobe/ffmpeg integration and e2e, in `nestjs-api`. **DoD
+  commands stay exactly as they are** (`docker compose exec nestjs-api npm
+  test`, `… npm run test:e2e`, `… npx tsc --noEmit`, `… npm run lint`). What
+  changes is the precondition: the image must be rebuilt once (`docker compose
+  build`), and `minio` + `redis` must be up and ready before the suites (TD-14).
+  B splits the DoD gate across two containers for an image-size gain that only
+  matters in production, C puts FFmpeg next to the HTTP server, and D pays a
+  monorepo-tooling cost Phase 03 does not need.
+  **Libraries:** —
+
+  ### phase-03-videos/TD-03
+
+  **Recommendation:** The Debian package gives a reproducible, arch-independent
+  ffmpeg/ffprobe in the shared dev image (TD-02 A), so the same binary serves
+  the worker at runtime and the tests in `nestjs-api`, and a thin `execFile`
+  wrapper replaces the deprecated `fluent-ffmpeg` without adopting another
+  wrapper. Thumbnail frame policy (e.g. a fixed fraction of duration, clamped to
+  the first seconds for short clips) is a parameter of this TD, not a separate
+  decision.
+  **Libraries:** —
+
+  ### phase-03-videos/TD-04
+
+  **Recommendation:** The phase needs only metadata and one frame, so streaming
+  the whole 10GB through the worker's disk is the dominant cost Option B adds
+  for no product gain. Option B stays a valid fallback for a future transcoding
+  phase, where the full read is unavoidable.
+  **Libraries:** @aws-sdk/s3-request-presigner
+
+  ### phase-03-videos/TD-05
+
+  **Recommendation:** It is the only option where no service other than the
+  object store touches video bytes, and resumability comes from `ListParts`. The
+  draft-on-initiate and enqueue-on-complete hooks are plain API endpoints that
+  follow the existing JWT/envelope conventions. tus (B) buys finer-grained
+  resume at the price of an extra data-path service and a hook contract. Note on
+  the strict-BFF rule: the browser talks to **storage** (presigned URLs), never
+  to the Nest API, which is the carve-out `next-frontend-config-base/TD-03`
+  already anticipated.
+  **Libraries:** @aws-sdk/client-s3, @aws-sdk/s3-request-presigner
+
+  ### phase-03-videos/TD-06
+
+  **Recommendation:** It follows the Phase 01 config convention and is the
+  mechanism that makes "10GB" testable without 10GB: the same code path runs
+  with a 12 MiB ceiling and 5 MiB parts in tests.
+  **Libraries:** —
+
+  ### phase-03-videos/TD-07
+
+  **Recommendation:** with two S3 endpoints in config: `S3_ENDPOINT` (internal,
+  Compose service name, for SDK calls and the worker's own presigned reads in
+  TD-04) and `S3_PUBLIC_ENDPOINT` (the host embedded in browser-facing presigned
+  URLs and public thumbnail URLs). The value of `S3_PUBLIC_ENDPOINT`, which
+  must be reachable from both the browser/host and the tests inside
+  `nestjs-api`, is decided in TD-16. It keeps the 10GB originals private while
+  giving listing pages stable thumbnail URLs, and it lets cost controls
+  (incomplete-upload cleanup, future quotas) target only the bucket that grows.
+  Phase 03 stores only the original + one thumbnail per video, so there are no
+  derivative copies (see TD-11).
+  **Libraries:** @aws-sdk/client-s3, @aws-sdk/s3-request-presigner
+
+  ### phase-03-videos/TD-08
+
+  **Recommendation:** It is the only option verified to run today that keeps the
+  documented MinIO target, with no build tooling. The application code talks
+  plain S3 (`@aws-sdk/client-s3`, `forcePathStyle`), so moving to B, C or real
+  S3 later is a compose change, not a code change.
+  **Libraries:** —
+
+  ### phase-03-videos/TD-09
+
+  **Recommendation:** It is the only option that is short **and** unguessable,
+  both of which are required (short by the attention point, unguessable by Phase
+  05 unlisted). The "never conflicts" guarantee comes from the DB constraint,
+  not from probability alone.
+  **Libraries:** —
+
+  ### phase-03-videos/TD-10
+
+  **Recommendation:** It is the only option where Range/206 traffic never
+  touches the throttled, BFF-shared API path while drafts and unlisted videos
+  stay private. It resolves the diagram/BFF tension cleanly: strict BFF governs
+  the **API**, and media bytes come from storage via short-lived signed URLs.
+  Which statuses may be played (e.g. only `ready`) is enforced by the issuing
+  endpoint (TD-12).
+  **Libraries:** @aws-sdk/client-s3, @aws-sdk/s3-request-presigner
+
+  ### phase-03-videos/TD-11
+
+  **Recommendation:** for Phase 03. It meets "reprodução sem download completo"
+  with zero added CPU/storage, and the phase scope is metadata, not transcoding.
+  What is lost: guaranteed fast-start and codec universality. Option B is the
+  cheapest upgrade if fast-start becomes a product requirement, and C belongs to
+  a dedicated future phase.
+  **Libraries:** —
+
+  ### phase-03-videos/TD-12
+
+  **Recommendation:** Keeping the technical lifecycle separate from "rascunho"
+  lets Phase 04 add publication/visibility without reshaping this machine. The
+  sweep is what makes the non-transactional enqueue (TD-01 A) and abandoned 10GB
+  multipart uploads safe, and the latter is a direct storage-cost control
+  (Pontos de Atenção). MinIO's server-side stale-upload expiry (`api
+  stale_uploads_expiry`, default 24h per MinIO docs) and S3's
+  `AbortIncompleteMultipartUpload` lifecycle rule are backstops, not
+  substitutes, because neither updates the DB row.
+  **Libraries:** bullmq, @nestjs/bullmq
+
+  ### phase-03-videos/TD-13
+
+  **Recommendation:** combined with TD-05/TD-10's design that keeps
+  per-upload/per-view API calls O(1). Under the current shared-IP tracker, any
+  IP-based limit on video routes is a site-wide limit, so B and C cap legitimate
+  traffic. **Accepted residual risk:** with A, the authenticated `POST
+  /videos/uploads` has no rate limit, so one account could open unlimited drafts
+  + multipart uploads (DB rows and orphan parts). The mitigation accepted for
+  this phase is a per-channel cap on videos in `processingStatus = uploading`
+  (env-configured, domain error in the `{statusCode,error,message}` envelope
+  when exceeded), plus TD-12's sweep, which fails and aborts stale uploads.
+  **Separate task (out of scope):** make the throttler track the real client
+  (BFF forwards client IP, API trusts the proxy / custom `getTracker`). After
+  that, a per-client `videos` policy (B) becomes meaningful.
+  **Libraries:** @nestjs/throttler
+
+  ### phase-03-videos/TD-14
+
+  **Recommendation:** It extends the existing shared-Compose test model instead
+  of introducing Docker-in-Docker, it is the only option that exercises the
+  S3/FFmpeg behaviours most likely to break, and it keeps every DoD command
+  running unchanged in `nestjs-api`.
+  **Libraries:** —
+
+  ### phase-03-videos/TD-15
+
+  **Recommendation:** The product's ownership unit is the channel (panel, public
+  page, watch page), and anchoring there keeps Phases 04–07 reads direct. The
+  extra user→channel lookup happens only on writes.
+  **Libraries:** —
+
+  ### phase-03-videos/TD-16
+
+  **Recommendation:** It is the only option with one signed URL that is
+  verifiably valid from both the browser/host and the `nestjs-api` tests, with
+  no per-environment override and no host setup. `S3_ENDPOINT` (internal SDK
+  calls, worker reads) keeps the plain service name.
+  **Libraries:** —
+
+  ## Filter Trace
+
+  Globbed T=8 candidates from `docs/decisions/*.md`. Per-file decisions:
+
+  | File | scope_type | related_phases | Decision | Reason |
+  |------|-----------|----------------|----------|--------|
+  | technical-decisions-phase-03-videos.md | phase | [3] | kept | phase rule:
+  filename-slug == identifier |
+  | technical-decisions-phase-01-configuracao-base.md | ? | ? | dropped | phase
+  rule: filename-slug != identifier; ad-hoc rule: not in S_adhoc |
+  | technical-decisions-phase-02-auth.md | ? | ? | dropped | phase rule:
+  filename-slug != identifier; ad-hoc rule: not in S_adhoc |
+  | technical-decisions-phase-02-auth-frontend.md | ? | ? | dropped | phase
+  rule: filename-slug != identifier; ad-hoc rule: not in S_adhoc |
+  | technical-decisions-next-frontend-config-base.md | ? | ? | dropped | ad-hoc
+  rule: not in S_NN |
+  | technical-decisions-next-frontend-msw-foundation.md | ? | ? | dropped |
+  ad-hoc rule: not in S_NN |
+  | technical-decisions-next-frontend-openapi-typing.md | ? | ? | dropped |
+  ad-hoc rule: not in S_NN |
+  | technical-decisions-openapi-docs-nestjs.md | ? | ? | dropped | ad-hoc rule:
+  not in S_NN |
+
+⏺ decisions-detail-reader's Filter Trace also matches (T=8, same set, same kept
+  doc). Running the Gate 5 TD-count check and comparing against the previous
+  rendering.
+
+⏺ Bash(grep -cE '^\*\*Decision:\*\* [A-Z]'
+      docs/decisions/technical-decisions-phase-03-videos.md; grep -cE
+      '^\*\*Decision:\*\* ' docs/decisions/technical-decisions-pha…)
+  ⎿  (No output)
+
+⏺ Agent "decisions-detail-reader phase 03" finished · 55s
+
+⏺ Gate 5 passes with 16 of 16, but TD-07, TD-11 and TD-13 now start mid-sentence
+  because the bold phrase was stripped along with the Option X marker. I'm
+  checking the source lines next. · summary
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+⏺ Bash(grep -nE '^\*\*Recommendation:\*\*'
+      docs/decisions/technical-decisions-phase-03-videos.md | sed -n
+      '7p;11p;13p' | cut -c1-200)
+  ⎿  (No output)
+
+⏺ The previous context.md handled this case by keeping the bold descriptive
+  phrase and dropping only Option X (…), e.g. **private videos+
+  public-readthumbnails, keys by videoId**, with two…. When I assemble, I'll
+  restore that phrase for TD-07, TD-11 and TD-13 so the Recommendations stay
+  faithful to the decisions doc. Still waiting for phases-reader.
+
+› Message from phases-reader
+  ## Prior Phases (for Phase 03 inheritance)
+
+  ### Phase 02 — auth / auth-frontend (sliced; conventions only in phase-02-auth
+  context.md `## Inherited Conventions`, originally from phase 01)
+
+  **Conventions to Match** (inherited as hard constraints):
+
+  - Backend config uses `@nestjs/config` with namespaced `registerAs(name, () =>
+  ({...}))` factories — one file per domain in `src/config/`.
+  - Env variables are validated by a Joi schema in
+  `src/config/env.validation.ts`, passed to `ConfigModule.forRoot({
+  validationSchema,...
+  - Config is injected into modules via `ConfigType<typeof xxxConfig>` and
+  `@Inject(xxxConfig.KEY)`; the same factory is importable as a plain...
+  - `data-source.ts` loads `.env` via `import 'dotenv/config'` at the top, then
+  imports `databaseConfig` and calls it as a plain function.
+  - Database connection parameters (host, port, etc.) are sourced from a single
+  `databaseConfig` factory — never duplicated between `AppModule` and...
+  - `TypeOrmModule.forRootAsync` is used (not `forRoot`), with `imports:
+  [ConfigModule]`, `inject: [databaseConfig.KEY]`, `useFactory` returning...
+
+  ---
+
+  ## Inherited TD Details for Phase 03
+
+  ### phase-01-configuracao-base/TD-01
+
+  **Recommendation:** Option A (@nestjs/config) — Official,
+  core-team-maintained, guaranteed NestJS 11 compatibility. The `registerAs()`
+  factory pattern solves the TypeORM CLI sharing problem: the factory function
+  can be imported as a plain function by `data-source.ts` while also serving as
+  a DI injection token inside NestJS. Building a custom module recreates solved
+  functionality; third-party packages carry maintenance risk.
+
+  **Libraries:** `@nestjs/config@^4.x`
+
+  ### phase-01-configuracao-base/TD-02
+
+  **Recommendation:** Option A (Joi) — First-class integration with
+  `@nestjs/config` via `validationSchema`, requiring zero custom wiring. Handles
+  string-to-number coercion natively. Using a different tool for env validation
+  vs. request validation is reasonable — env config is validated once at
+  startup, DTOs are validated per-request. Zod is elegant but adds a third
+  validation paradigm to the project.
+
+  **Libraries:** `joi@^17.x`
+
+  ### phase-01-configuracao-base/TD-03
+
+  **Recommendation:** Option B (Namespaced/grouped with registerAs) — The
+  project roadmap explicitly calls for auth, email, and storage in upcoming
+  phases. Namespaced configs provide clear file boundaries per domain, typed
+  injection via `ConfigType<typeof databaseConfig>`, and natural scalability.
+  The `registerAs()` factory is dual-purpose: DI token inside NestJS and plain
+  importable function for `data-source.ts`. Initial files for Phase 01:
+  `src/config/database.config.ts`, `src/config/app.config.ts`.
+
+  **Libraries:** —
+
+  ### phase-01-configuracao-base/TD-04
+
+  **Recommendation:** Option A (Shared registerAs factory) — Natural outcome of
+  choosing `@nestjs/config` with `registerAs`. The factory is already callable
+  by design. `data-source.ts` imports it, calls `dotenv.config()`, then calls
+  the factory. Zero duplication, minimal code, no extra abstraction.
+
+  **Libraries:** `dotenv` (transitive via `@nestjs/config`)
+
+  ### phase-02-auth/TD-01
+
+  **Recommendation:** Argon2id — For a greenfield project in 2026, Argon2id is
+  the OWASP-recommended choice. The native build dependency is a one-time Docker
+  setup cost. The project has no legacy constraints favoring bcrypt. OWASP
+  minimum: 19MiB memory, 2 iterations.
+
+  **Libraries:** `argon2@^0.41.x`
+
+  ### phase-02-auth/TD-02
+
+  **Recommendation:** Option A (@nestjs/passport) — The project plan includes
+  only email/password auth for now, but the plugin architecture costs little and
+  future phases may add social login. Aligns with official NestJS docs, making
+  onboarding and maintenance easier.
+
+  **Note:** Decision deliberately diverged from the Recommendation during
+  implementation — custom guards were preferred over `@nestjs/passport` to keep
+  the dependency surface smaller; social login is not on the near-term roadmap,
+  so the plugin-architecture benefit did not justify the extra abstraction
+  layer.
+
+  **Libraries:** `@nestjs/jwt@^11.0.0`
+
+  ### phase-02-auth/TD-03
+
+  **Recommendation:** Option A (Refresh Token Rotation) — Provides the strongest
+  security model with automatic theft detection. The DB write overhead is
+  acceptable for a video platform (auth refresh is infrequent vs. video
+  operations). PostgreSQL is already in the stack, so no new infrastructure
+  needed. Race conditions can be mitigated with a short grace period for the old
+  token.
+
+  **Libraries:** —
+
+  ### phase-02-auth/TD-04
+
+  **Recommendation:** Option B (Random Opaque Tokens in DB) — Revocability is
+  important: when a user requests a new password reset, previous tokens should
+  be invalidated. The DB table is trivial to implement, and the tokens table can
+  also serve future needs (e.g., API keys). Keeps email tokens decoupled from
+  the JWT auth system.
+
+  **Libraries:** —
+
+  ### phase-02-auth/TD-05
+
+  **Recommendation:** Option A (@nestjs-modules/mailer) — Best NestJS
+  integration with minimal boilerplate. Supports SMTP (matching the architecture
+  diagram), works with MailHog/Mailpit for local development without external
+  dependencies, and scales to any SMTP provider in production. Template engine
+  support (Handlebars) simplifies email formatting. No vendor lock-in.
+
+  **Libraries:** `@nestjs-modules/mailer@^2.x`, `handlebars@^4.x`
+
+  ### phase-02-auth/TD-06
+
+  **Recommendation:** Option A (class-validator + class-transformer) — This is a
+  backend-only project (no shared schemas with frontend), so Zod's
+  single-source-of-truth advantage is less impactful. class-validator is the
+  documented NestJS approach, and the project already uses decorators
+  extensively (TypeORM entities, NestJS DI). Fewer integration surprises with
+  NestJS 11.
+
+  **Libraries:** `class-validator@^0.14.x`, `class-transformer@^0.5.x`
+
+  ### phase-02-auth/TD-07
+
+  **Recommendation:** Option A (Custom Domain Exception Filter) — Provides
+  machine-readable error codes that the Next.js frontend can switch on, without
+  the overhead of RFC 9457's URI-based type system. The project is
+  single-consumer (first-party frontend), so a simple `{ statusCode, error,
+  message }` format with domain codes balances clarity and simplicity. The
+  custom filter cost is low — two small files.
+
+  **Libraries:** —
+
+  ### phase-02-auth/TD-08
+
+  **Recommendation:** Option A (@nestjs/throttler) — Native NestJS integration
+  is decisive: the guard system allows scoping rate limiting to `AuthModule`
+  only via module-level `APP_GUARD`, with `@SkipThrottle()` for exemptions. The
+  project is single-instance with no distributed requirements, so in-memory
+  storage is sufficient. Using express-rate-limit would bypass NestJS's DI and
+  guard lifecycle for no clear benefit.
+
+  **Libraries:** `@nestjs/throttler@^6.x`
+
+  ### phase-02-auth/TD-09
+
+  **Recommendation:** Option B (Opaque) — Since DB lookup is mandatory (TD-03),
+  JWT signature adds no security value. Opaque tokens are shorter, leak no data,
+  and are simpler to generate.
+
+  **Note:** Decision deliberately diverged from the Recommendation — JWT was
+  kept to reuse the access-token signing/verification infrastructure
+  (`@nestjs/jwt`), trading token size and base64-readability for a single token
+  format across the codebase.
+
+  **Libraries:** `@nestjs/jwt@^11.0.0`
+
+  ### phase-02-auth/TD-10
+
+  **Recommendation:** Option A — The platform is a video sharing service with
+  URL-based channel handles. A strict `[a-z0-9_]` allowlist is the simplest and
+  most portable choice: no extra dependencies, no edge cases around hyphen
+  positioning, and the `user_<random>` fallback provides a valid handle even for
+  extreme email prefixes. Hyphens can always be added in a future iteration if
+  user feedback justifies it.
+
+  **Libraries:** —
+
+  ### phase-02-auth-frontend/TD-01
+
+  **Recommendation:** Three reasons. (1) **Architectural fit.** The strict-BFF
+  model in `next-frontend-config-base/TD-03` already nominates the Route Handler
+  as the only NestJS caller; cookie-based sessions are the natural match, and
+  Auth.js's framework adds layers between the BFF and the cookie that buy
+  nothing because the backend is the auth authority — Auth.js's value (DB
+  adapters, OAuth providers, magic-link, `getServerSession` helpers) is mostly
+  unused in this configuration. (2) **Smaller blast radius.** A ~50-LOC session
+  helper is grep-friendly, debuggable, and test-friendly via the existing
+  MSW+BFF integration test pattern; a misconfigured Auth.js callback is a longer
+  fault-isolation loop. (3) **Compatibility with Next.js 16 / React 19.**
+  Built-in `next/headers` `cookies()` is the canonical primitive both runtimes
+  already use; Auth.js v5 versions track Next.js majors with a lag, adding
+  compatibility risk that Option A does not have. Option C is rejected as unsafe
+  (`localStorage` for refresh tokens) and architecturally regressive (loses RSC
+  personalization).
+  **Libraries:** —
+
+  ### phase-02-auth-frontend/TD-02
+
+  **Recommendation:** Three reasons. (1) **Defense in depth on the cookie
+  content** — `httpOnly` blocks JS, encryption blocks accidental log/proxy
+  inspection; the marginal cost is one ~3KB dep. (2) **Single cookie to manage**
+  simplifies logout (one `session.destroy()` call) and avoids the orphan-cookie
+  failure mode of Option A. (3) **Room to carry minimal user metadata**
+  (`userId`, `email`, `channelSlug`) lets `app/layout.tsx` RSC render the
+  authenticated chrome (avatar, channel name) without a per-render `/auth/me`
+  round-trip — Phase 04+ gains compound here. Option A is a viable downgrade if
+  the team rejects `iron-session` for any reason; the migration A→B (or B→A) is
+  a one-Route-Handler refactor with no test changes downstream because the BFF
+  interface is unchanged. Option C is rejected: it solves a problem (server-side
+  revocation) the project does not have at the cost of infrastructure the
+  project does not own.
+  **Libraries:** iron-session
+
+  ### phase-02-auth-frontend/TD-03
+
+  **Recommendation:** The single-flight detail is non-trivial and goes in the
+  helper from day one — tested by MSW with a "two concurrent intercepted
+  upstream calls; one refresh expected" assertion. Option B's client-driven
+  pattern is rejected because it doesn't replace Option A (RSC still needs
+  server-side refresh) — adopting B means doing both. Option C's pre-emptive
+  timer is rejected because the failure modes (multiple tabs, sleep/wake)
+  outweigh the latency saving and force a `"use client"` shell near the root.
+  **Libraries:** —
+
+  ### phase-02-auth-frontend/TD-04
+
+  **Recommendation:** Three reasons. (1) **Decoupled from TD-05** — works with
+  Route Handlers OR Server Actions; the form code does not change if TD-05 is
+  revisited later. (2) **Aligned with shadcn's canonical form primitive** — the
+  project already commits to `radix-nova` shadcn (`components.json`); `npx
+  shadcn@latest add form` produces react-hook-form wrappers; choosing
+  react-hook-form means using the supported primitive instead of hand-rolling
+  around it. (3) **Zod-first developer ergonomics match the rest of the FE
+  foundation** — `next-frontend-config-base/TD-01` chose Zod 4 for env; the same
+  schemas-as-source-of-truth pattern carries to forms with zero new validator
+  paradigm. Option B is rejected for impedance with shadcn's primitive and for
+  over-investing in progressive-enhancement that the strict-BFF model does not
+  require. Option C is rejected for the per-field boilerplate and the loss of
+  client-side feedback on a project that values quick, type-safe form iteration.
+  **Libraries:** react-hook-form, @hookform/resolvers
+
+  ### phase-02-auth-frontend/TD-05
+
+  **Recommendation:** Three reasons. (1) **Strict-BFF alignment.**
+  `next-frontend-config-base/TD-03` named Route Handlers as the BFF surface;
+  Option A keeps every mutation visible under `app/api/**`. (2) **Test scaffold
+  already exists** — `next-frontend/CLAUDE.md` § Testing and
+  `next-frontend-msw-foundation` were authored for Route-Handlers-as-functions;
+  Option A reuses them with zero invention. (3) **Single mutation surface** —
+  Phase 02 sets the precedent for Phases 03–07; uniformity beats per-mutation
+  idiom-picking when the cost of inconsistency compounds (Option C). Option B
+  has real ergonomic appeal for the simplest forms but fragments the BFF surface
+  and forces test-pattern reinvention; if the team later wants progressive
+  enhancement for specific forms, the migration A→B is per-form and doesn't
+  require touching unrelated routes — A is the safer default and the cheaper
+  baseline.
+  **Libraries:** —
+
+  ### phase-02-auth-frontend/TD-06
+
+  **Recommendation:** Two reinforcing reasons. (1) **No first-render flicker, no
+  round-trip** — the session is delivered in the same response as the page
+  HTML; the Client Provider hydrates with the correct initial state; users never
+  see "Login" briefly turn into their avatar. (2) **No new BFF endpoint** — the
+  cookie is the source of truth, RSC reads it, the Provider broadcasts it; the
+  BFF surface stays minimal. The `router.refresh()` requirement after
+  mid-session mutations is a small price (one line in the relevant mutation
+  handler) for the structural benefits. Option B is rejected for the
+  double-read-and-flicker; Option C is dominated by Option B and rejected.
+  **Libraries:** —
+
+  ### phase-02-auth-frontend/TD-07
+
+  **Recommendation:** Three reasons. (1) **First-paint-correct** — the user sees
+  the right outcome on the first paint, no skeleton, no flicker. (2) **Single
+  integration pattern across both flows** — confirmation is RSC-only; reset is
+  RSC + Client form (TD-04, TD-05 patterns reused) — both share the "RSC owns
+  the token, Client Component owns the input" split. (3) **Email-prefetch
+  behavior** is solved at the backend's idempotent-confirmation level (a small
+  note for `/plan-build` to confirm; not a separate TD). Option B's
+  Route-Handler-as-link-target adds redirects for no clean gain. Option C is
+  dominated.
+  **Libraries:** —
+
+  ---
+
+  ## Inherited Deferred Capabilities for Phase 03
+
+  | Capability | Status | Origin phase | Rationale |
+  |-----------|--------|--------------|-----------|
+  | Telas de frontend | deferred | phase-01-configuracao-base | `next-frontend/`
+  is not initialized in this phase; UI surfaces start in a later phase. |
+  | Telas de cadastro, login, confirmação de conta e recuperação de senha |
+  deferred | phase-02-auth | `next-frontend/` is not initialized in this phase;
+  UI surfaces start in a later phase. |
+  | "Confirmação de conta via e-mail com link de ativação" | deferred |
+  phase-02-auth-frontend | deferred_to_next_phase — UI landing screen de-scoped
+  2026-05-14; FE confirmation flow (TD-07) picked up by a future phase. BE side
+  unchanged in `phase-02-auth`. |
+  | "Logout" | deferred | phase-02-auth-frontend | deferred_to_next_phase —
+  logout button lives inside authenticated chrome (typically Phase 04). Phase 02
+  still implements POST `/api/auth/logout` (BFF route handler +
+  `session.destroy()`) so the contract is ready when the chrome lands. |
+  | "Recuperação de senha (destination screen / set-new-password)" | deferred |
+  phase-02-auth-frontend | deferred_to_next_phase — `/forgot-password` ships
+  this phase sending the e-mail; the reset-password destination screen is absent
+  from Figma → link destination remains a 404 until a later phase delivers the
+  screen via `/screen-inventory` extension run. Documented as a known gap. |
+  | "Telas de cadastro, login, confirmação de conta e recuperação de senha" |
+  deferred | phase-02-auth-frontend | a tela de confirmação da conta não será
+  implementada nesta fase corrente, será adiada — the umbrella bullet's full
+  coverage requires the confirmação and reset-password destination screens; both
+  are deferred per Non-UI rows above. The 3 ship-this-phase telas (signup,
+  login, forgot-password) are inventoried and covered by their own verbs; the
+  umbrella bullet itself is deferred to the phase that lands the missing
+  screens. |
+
+  ## Sources Read (prior-phase context.md)
+
+  - ~/Documents/projects/full-cycle/mba-ia-greenfield-pro
+  ject/docs/phases/phase-01-configuracao-base/context.md
+  - ~/Documents/projects/full-cycle/mba-ia-greenfield-pro
+  ject/docs/phases/phase-02-auth/context.md
+  - ~/Documents/projects/full-cycle/mba-ia-greenfield-pro
+  ject/docs/phases/phase-02-auth-frontend/context.md
+
+  Notes: None of the prior phase docs (phase-01-configuracao-base.md,
+  phase-02-auth.md, phase-02-auth-frontend.md) has a `## Conventions to Match`
+  section. The conventions come from the `## Inherited Conventions` section of
+  phase-02-auth/context.md (lines 164-171). Each bullet there is tagged `_(from
+  phase 01)_`; I dropped the tags and recorded where they came from in the
+  heading. Bullets 2, 3, 5 and 6 are cut at 150 characters as the output
+  contract requires. They are complete in that file, lines 167, 168, 170 and
+  171.
+
+⏺ All 5 subagents are back. Before assembling, I'm checking how the previous
+  context.md ordered the Inherited Decisions Detail section and the openapi TD
+  blocks.
+
+⏺ Bash(sed -n '/^## Inherited Decisions Detail/,/^## Inherited Conventions/p'
+      docs/phases/phase-03-videos/context.md >
+      /private/tmp/claude-501/-Users-luisgustavoganimi…)
+  ⎿  (No output)
+
+⏺ Agent "phases-reader phase 03" finished · 1m 19s
+
+⏺ Bash(sed -n '1,35p'
+      /private/tmp/claude-501/-Users-USER-Documents-projects-full-c
+      ycle-mba-ia-greenfield-project/eaa3eb70-018b-41ea-a3de-297ee3d91fa1/scr…)
+  ⎿  (No output)
+
+⏺ The prior sources are unchanged apart from the phase-03 decisions doc, so I'm
+  regenerating the Decisions Detail from that file and diffing it against the
+  old version. · summary
+
+  Made 1 scratchpad edit +83 (ctrl+o to expand)
+
+⏺ Bash(S=/private/tmp/claude-501/-Users-USER-Documents-projects-ful
+      l-cycle-mba-ia-greenfield-project/eaa3eb70-018b-41ea-a3de-297ee3d91fa1/scr
+      atchpad && se…)
+  ⎿  Error: Exit code 1
+     52d51
+     < **Note:** Phase 03 access rule (resolves validation AMB-1): the
+     URL-issuing endpoint is `@Public` with optional auth. The owner (channel
+     owner) gets playback/download URLs for their own videos once
+     `processingStatus = ready`, even while the video is a draft; anyone else
+     gets them only when the video is published. The publication gate is wired
+     now and becomes effective when Phase 04 adds publishing. Drafts therefore
+     stay private, as this Recommendation requires.
+     62,69d60
+     <
+     < **Sweep scheduling mechanism (part of Option B):**
+     <
+     < - **Chosen: BullMQ Job Scheduler, running in the worker process.** On
+     worker bootstrap, the worker calls
+     `queue.upsertJobScheduler('video-maintenance-sweep', { every: <ms> }, {
+     name: 'sweep' })` on a dedicated `video-maintenance` queue, and a
+     `@Processor('video-maintenance')` in `WorkerModule` executes it. `upsert`
+     is idempotent by scheduler ID, so restarts or extra worker replicas
+     re-declare the same scheduler instead of stacking duplicates, and each tick
+     becomes one job processed by one worker. The interval and the stale
+     threshold are env-configured (TD-06 pattern: e.g.
+     `VIDEO_SWEEP_INTERVAL_MS`, `VIDEO_UPLOAD_STALE_AFTER_MS`). Tests invoke the
+     processor directly instead of waiting for a tick. Library: `bullmq` (same
+     dependency as TD-01; latest `6.7.10`, docs read at v6.5.3). In v6 the
+     legacy repeatable-job API (`add(..., { repeat })`, `getRepeatableJobs`,
+     `removeRepeatable*`) is **removed** in favour of Job Schedulers, so the
+     scheduler API is the only supported path.
+     < - **Why the worker, not the API:** the sweep calls
+     `AbortMultipartUpload`/`ListParts` on storage and writes status. Keeping it
+     beside the processing processor keeps the API request-path-only and puts
+     all background mutations of `processingStatus` in one process.
+     < - **Considered alternative: `@nestjs/schedule` `@Cron`**
+     (`@nestjs/schedule@12.0.4`, peers `@nestjs/core ^11||^12`). The cron is
+     registered in-process at `onApplicationBootstrap` (Nest docs,
+     `techniques/task-scheduling`), so every process that imports
+     `ScheduleModule` runs its own timer, and multiple worker replicas would
+     sweep concurrently unless a lock is added. It is also one more dependency
+     for something the queue already provides. Rejected.
+     … +6 lines (ctrl+o to expand)
+
+⏺ The detail-reader dropped three items the old context had (the TD-10 note, the
+  TD-12 sweep block, and the TD-16 Docker exception), which matters because the
+  leader's fixes live in those Note fields. I'm checking the agent's contract
+  and the decisions doc next. · summary
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+⏺ The decisions-detail-reader contract only emits Recommendation, Renders in,
+  Libraries and Revisions, so I'm checking git history to find which stage added
+  the TD-10, TD-12 and TD-16 blocks to the old context.md. · summary
+
+⏺ Bash(git log --oneline -- docs/phases/phase-03-videos/context.md | head; for c
+      in $(git log --format=%h -- docs/phases/phase-03-videos/context.md | head
+      -6); do echo…)
+  ⎿  (No output)
+
+⏺ plan-resolve wrote those blocks into context.md in commit 896565a, yet the
+  first plan-context run (cefae2a) never produced them. I'm checking where they
+  sit relative to Recommendation and Decision in the TD body next. · summary
+
+⏺ Bash(D=docs/decisions/technical-decisions-phase-03-videos.md; for r in 50,60
+      170,179 260,272 326,336 390,414 530,544; do echo "=== $r"; sed -n "${r}p"
+      $D | cut -c1-1…)
+  ⎿  (No output)
+
+⏺ plan-resolve also rewrites Decisions Detail from decisions-detail-reader's
+  output, so the extra blocks in the old context fell outside the contract. I'm
+  checking the contract's prefix-stripping rule to settle TD-07, TD-11 and
+  TD-13. · summary
+
+⏺ Bash(sed -n '50,100p' .claude/agents/decisions-detail-reader.md)
+  ⎿  (No output)
+
+⏺ Your narration is rewritten as: The fragments in the contract examples are a
+  problem for TD-07, TD-11 and TD-13, so I'm keeping the earlier rendering for
+  those; next I'm checking the Decision-column contract in decisions-reader
+  before settling the Index. · summary
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+⏺ The Capability Coverage derived from the TD fields matches the old table, and
+  the Index will keep the letter-only Decision column. I need your decision on
+  one point before I write the file. · summary
+⏺ Answered Claude's questions:
+  ⎿  · Regenerating context.md for phase-03-videos: decisions-detail-reader only
+     emits Recommendation + Libraries per TD. The current context.md also has
+     three blocks that /plan-resolve patched in (commit 896565a): the TD-10
+     **Note** (access rule that resolved AMB-1), the TD-12 'Sweep scheduling
+     mechanism' block, and the TD-16 Docker Networking exception. The leader's
+     new **Note:** fields (TD-01, 05, 08, 12, 16) are not in the contract
+     either. What should Decisions Detail contain? → Keep 3 + add new Notes
+
+⏺ You chose to keep the three existing blocks and add the leader's five new
+  Notes, so I'm reading the full Note texts and the old block placement to
+  insert them consistently before **Libraries:**. · summary
+
+⏺ Bash(S=/private/tmp/claude-501/-Users-USER-Documents-projects-ful
+      l-cycle-mba-ia-greenfield-project/eaa3eb70-018b-41ea-a3de-297ee3d91fa1/scr
+      atchpad; sed…)
+  ⎿  (No output)
+
+⏺ I'm regenerating the final file with an updated frontmatter mtime and the five
+  decision notes inserted in source order. · summary
+
+⏺ Bash(python3 - <<'EOF'
+      import re…)
+  ⎿  Updated docs/phases/phase-03-videos/context.md +14 -1
+      3  name: phase-03-videos
+      4  sources_mtime:
+      5    docs/project-plan.md: "2026-10-28T19:33:34-03:00"
+      6 -  docs/decisions/technical-decisions-phase-03-videos.md: "2026-1
+        -1-24T21:09:01-03:00"                                            
+      6 +  docs/decisions/technical-decisions-phase-03-videos.md: "2026-1
+        +1-24T23:28:59-03:00"                                            
+      7    docs/decisions/technical-decisions-openapi-docs-nestjs.md: "20
+         26-10-28T19:33:34-03:00"
+      8    docs/phases/phase-01-configuracao-base/context.md: "2026-10-28
+         T19:33:34-03:00"
+      9    docs/phases/phase-02-auth/context.md: "2026-10-28T19:33:34-03:
+         00"
+     ...
+      84  ### phase-03-videos/TD-01
+      85 
+      86  **Recommendation:** It is the only option where retries, expone
+          ntial backoff, `jobId` dedup and failed-job inspection come fro
+          m the official Nest integration without custom plumbing, and it
+           matches the diagram's separate queue container. The real cost
+          is the non-transactional enqueue: it is covered by an idempoten
+          t `jobId = videoId` plus a periodic reconciliation (TD-12). pg-
+          boss (B) is the honest runner-up if the team prefers zero new i
+          nfrastructure and transactional enqueue over Nest-native ergono
+          mics.
+      87 +**Note:** Pre-implementation review (2026-11-24): in `bullmq@6.
+         +7.10`, `ioredis` is an **optional** peer dependency (`npm view 
+         +bullmq@6.7.10 peerDependenciesMeta`), so npm does not install i
+         +t and BullMQ fails with "could not load the optional 'ioredis' 
+         +package". `ioredis` is pinned explicitly alongside `bullmq` (se
+         +e `library-refs.md`). By design, producers' `add` waits while R
+         +edis is unreachable (bullmq docs, "Failing fast when Redis is d
+         +own"). The API bounds the post-commit enqueue with a timeout in
+         +stead of `enableOfflineQueue: false`, because the connection is
+         + shared with the worker.                                       
+      88  **Libraries:** bullmq, @nestjs/bullmq
+      89 
+      90  ### phase-03-videos/TD-02
+     ...
+      105  ### phase-03-videos/TD-05
+      106 
+      107  **Recommendation:** It is the only option where no service oth
+           er than the object store touches video bytes, and resumability
+            comes from `ListParts`. The draft-on-initiate and enqueue-on-
+           complete hooks are plain API endpoints that follow the existin
+           g JWT/envelope conventions. tus (B) buys finer-grained resume
+           at the price of an extra data-path service and a hook contract
+           . Note on the strict-BFF rule: the browser talks to **storage*
+           * (presigned URLs), never to the Nest API, which is the carve-
+           out `next-frontend-config-base/TD-03` already anticipated.
+      108 +**Note:** Pre-implementation review (2026-11-24): the draft ro
+          +w created on initiate also carries a `title`. The challenge's 
+          +"Persistência" requirement lists title among the minimum video
+          + fields. `title` is optional on initiate and defaults to the `
+          +fileName` without its extension (or the whole `fileName` when 
+          +that is empty). Editing it belongs to Phase 04 ("Edição das in
+          +formações do vídeo").                                         
+      109  **Libraries:** @aws-sdk/client-s3, @aws-sdk/s3-request-presign
+           er
+      110 
+      111  ### phase-03-videos/TD-06
+     ...
+      121  ### phase-03-videos/TD-08
+      122 
+      123  **Recommendation:** It is the only option verified to run toda
+           y that keeps the documented MinIO target, with no build toolin
+           g. The application code talks plain S3 (`@aws-sdk/client-s3`,
+           `forcePathStyle`), so moving to B, C or real S3 later is a com
+           pose change, not a code change.
+      124 +**Note:** Pre-implementation review (2026-11-24), verified aga
+          +inst the cached images:                                       
+      125 +- `cgr.dev/chainguard/minio-client` has `mc` as its entrypoint
+          + and no `sh`, so it cannot run a multi-step init. `cgr.dev/cha
+          +inguard/minio` ships both `sh` and `mc`, so the one-shot `mini
+          +o-init` runs from the `minio` image (same digest) with `sh -c`
+          +. `minio-client` is not used.                                 
+      126 +- `mc cors set` fails with "not implemented" on this MinIO bui
+          +ld, so no per-bucket CORS is configured. MinIO's default CORS 
+          +already exposes `ETag` (`Access-Control-Expose-Headers`); `MIN
+          +IO_API_CORS_ALLOW_ORIGIN` remains available if origins ever ne
+          +ed narrowing.                                                 
+      127  **Libraries:** —
+      128 
+      129  ### phase-03-videos/TD-09
+     ...
+      153  - **Considered alternative: `@nestjs/schedule` `@Cron`** (`@ne
+           stjs/schedule@12.0.4`, peers `@nestjs/core ^11||^12`). The cro
+           n is registered in-process at `onApplicationBootstrap` (Nest d
+           ocs, `techniques/task-scheduling`), so every process that impo
+           rts `ScheduleModule` runs its own timer, and multiple worker r
+           eplicas would sweep concurrently unless a lock is added. It is
+            also one more dependency for something the queue already prov
+           ides. Rejected.
+      154  - **Dependency:** valid if TD-01 = A. If TD-01 = B (pg-boss),
+           this mechanism must be re-researched against pg-boss's own sch
+           eduling.
+      155 
+      156 +**Note:** Pre-implementation review (2026-11-24): mapping to t
+          +he challenge's status cycle "rascunho → processando → pronto/e
+          +rro":                                                         
+      157 +- rascunho = `publication_status = 'draft'` + `processing_stat
+          +us = 'uploading'`;                                            
+      158 +- processando = `processing`;                                 
+      159 +- pronto = `ready`;                                           
+      160 +- erro = `failed` (with `failure_reason`).                    
+      161 +                                                              
+     … +11 lines (ctrl+o to expand)
+  ⎿  (files that changed while this command ran, by the command or by
+     another process; a convenience view, not a review or audit of the
+     command)
+
+⏺ The diff is exactly the mtime refresh plus the 5 leader Notes. Committing
+  stage 1. Per your instruction and global rule, there's no Co-Authored-By.
+
+⏺ Bash(git add docs/phases/phase-03-videos/context.md && git commit -q -m "docs:
+      refresh phase 03 context" && git log --oneline -1 && git status --short)
+  ⎿  (No output)
+
+⏺ Stage 1 is done and committed as 2119624 (docs: refresh phase 03 context).
+
+  - Context: this is a regeneration of context.md
+    (docs/phases/phase-03-videos/context.md). The only changes are the refreshed
+    mtime of the phase-03 decisions doc and the leader's 5 **Note:** fields,
+    which went into Decisions Detail for TD-01, TD-05, TD-08, TD-12 and TD-16,
+    as you chose.
+  - Preserved: the 3 blocks /plan-resolve had added earlier stay as they were
+    (TD-10 Note, TD-12 sweep block, TD-16 Docker Networking exception).
+  - Choices made:
+    - The UI question was answered with deferred, as you instructed.
+    - In the correlator, only openapi-docs-nestjs is selected.
+  - Checks: Filter Trace for both readers passed (8 = 8, same doc kept), and the
+    decided-TD count matched (16 = 16).
+  - Fixed during assembly: decisions-detail-reader dropped the bold descriptive
+    phrase from the Recommendations of TD-07, TD-11 and TD-13, leaving them
+    starting mid-sentence. I restored the previous wording.
+
+  Next is /plan-validate phase-03-videos. It's model-blocked too, so you need to
+  type it.
+
+❯ /plan-validate phase-03-videos
+
+⏺ Running /plan-validate phase-03-videos. Preflight first: staleness check on
+  context.md, the prior validation.md, and custom rules.
+
+⏺ Bash(P=docs/phases/phase-03-videos; awk '/^sources_mtime:/{f=1;next} f&&/^
+      /{print;next} f{exit}' $P/context.md | while read k v; do k=${k%:};
+      v=${v//\"/}; r=$(node…)
+  ⎿  (No output)
+
+⏺ context.md is fresh and there are no custom rules, so the prior history (AMB-1
+  and OQ-1..16, all resolved) carries over. Reading context.md in full for the
+  checks.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ All nine capabilities are covered and no new issues turned up, so the file is
+  marked clean; I'm reading the current body to regenerate it. · summary
+
+⏺ Bash(sed -n '78,200p' docs/phases/phase-03-videos/validation.md; date -r
+      docs/phases/phase-03-videos/context.md +%Y-%m-%dT%H:%M:%S%z)
+  ⎿  (No output)
+
+⏺ The body regenerates identically (no new findings, history kept). Only
+  sources_mtime changes.
+
+⏺ Bash(F=docs/phases/phase-03-videos/validation.md && sed -i '' -e
+      's|docs/phases/phase-03-videos/context.md:
+      "2026-11-24T21:11:18-03:00"|docs/phases/phase-03-videos/c…)
+  ⎿  Updated docs/phases/phase-03-videos/validation.md +2 -2
+       4  status: clean
+       5  issue_count: 0
+       6  sources_mtime:
+       7 -  docs/phases/phase-03-videos/context.md: "2026-11-24T21:11:18-
+         -03:00"                                                         
+       8 -  docs/decisions/technical-decisions-phase-03-videos.md: "2026-
+         -11-24T21:09:01-03:00"                                          
+       7 +  docs/phases/phase-03-videos/context.md: "2026-11-25T11:24:26-
+         +03:00"                                                         
+       8 +  docs/decisions/technical-decisions-phase-03-videos.md: "2026-
+         +11-24T23:28:59-03:00"                                          
+       9  issues:
+      10    - id: AMB-1
+      11      status: resolved
+
+⏺ Stage 2 came out as expected: status: clean, 0 open issues. It's committed as
+  44ad30f (docs: phase 03 validation (iteration 3)).
+
+  - Checks: none of the 8 checks raised anything new, including against the
+    leader's 5 new Notes.
+    - UIG was skipped because UI is deferred, and the cross-slice check was
+      skipped because the phase has a single slice.
+    - There are no custom rules.
+  - What changed in validation.md (docs/phases/phase-03-videos/validation.md):
+    only sources_mtime. The history of AMB-1 and OQ-1..16 (all resolved) is kept
+    unchanged.
+
+  Next is /plan-test-specs phase-03-videos, which you need to type.
+
+❯ /plan-test-specs phase-03-videos
+
+⏺ Running /plan-test-specs phase-03-videos. Preflight: plan existence,
+  test_specs_aware, and the **Test Specs:** SI count.
+
+⏺ Bash(P=docs/phases/phase-03-videos/phase-03-videos.md; ls -la $P; awk
+      '/^---$/{f=!f;next} f' $P | grep -c "^test_specs_aware: true$"; awk
+      '/^---$/{c++;next} c==1' $P…)
+  ⎿  (No output)
+
+⏺ All 7 backend controller SIs with Test Specs are wired up and already have
+  their paths filled in. I'm extracting each scenario's lifecycle fields and
+  each SI's ACs next. · summary
+
+⏺ Bash(P=docs/phases/phase-03-videos/phase-03-videos.md; echo "PLAN_MTIME=$(date
+      -r $P +%s) $(date -r $P +%Y-%m-%dT%H:%M:%S%z)"; for f in
+      nestjs-project/specs/*.plan.m…)
+  ⎿  (No output)
+
+⏺ All existing scenarios have a last sync earlier than the plan's mtime, so they
+  all classify as UPDATED. Next I'll read SI-03.8 and its spec to work out the
+  NEW count and coverage. · summary
+
+  Read 2 files (ctrl+o to expand)
+  ⎿  Loaded nestjs-project/CLAUDE.md
+
+⏺ SI-03.8 has 8 acceptance criteria, and its scenarios cover all but #2
+  (unit-only, so only a coverage warning) and #8, which is new. I'm checking the
+  API contract, the data model for title, and the AC counts of the other SIs
+  next. · summary
+
+⏺ Bash(P=docs/phases/phase-03-videos/phase-03-videos.md; grep -n 'title' $P |
+      grep -v '^2[4-6][0-9]:' | cut -c1-220 | head -20; echo; for r in 270:307
+      307:344 344:375…)
+  ⎿  (No output)
+
+⏺ Bash(sed -n '760,790p' docs/phases/phase-03-videos/phase-03-videos.md | cut
+      -c1-200)
+  ⎿  (No output)
+⏺ The delta report covers seven video specs: one new scenario for SI-03.8 and 42
+  scenarios flagged as updated, with AC #2 of SI-03.8 covered only by a unit
+  test. Next I'll apply the single new scenario and leave the Last sync stamps
+  alone. · summary
+
+⏺ Bash(date -u +%Y-%m-%dT%H:%M:%SZ)
+  ⎿  (No output)
+
+⏺ Update(nestjs-project/specs/videos-uploads.plan.md)
+  ⎿  Added 16 lines
+      48      - expect: status `404` com `{ statusCode: 404, error: "CHAN
+          NEL_NOT_FOUND", message: "Channel not found for the authenticat
+          ed user" }`
+      49      - expect: nenhuma linha criada em `videos`
+      50 
+      51 +#### 1.3. titulo-padrao-do-filename-e-titulo-informado-com-trim
+      52 +                                                               
+      53 +**Covers AC:** #8                                              
+      54 +**Source:** auto                                               
+      55 +**Last sync:** 2026-11-25T14:31:44Z                            
+      56 +                                                               
+      57 +**Steps:**                                                     
+      58 +  1. POST /videos/uploads com o token do dono e body `{ fileNam
+         +e: "aula-01.mp4", sizeBytes: 11534336, mimeType: "video/mp4" }`
+         +, sem `title`                                                  
+      59 +    - expect: status `201`                                     
+      60 +  2. Consultar a linha `videos` com `id = videoId`             
+      61 +    - expect: `title = 'aula-01'` (o `fileName` sem a extensão)
+      62 +  3. POST /videos/uploads com o token do dono e body `{ fileNam
+         +e: "aula-02.mp4", title: "  Minha aula  ", sizeBytes: 11534336,
+         + mimeType: "video/mp4" }`                                      
+      63 +    - expect: status `201`                                     
+      64 +  4. Consultar a linha `videos` com `id = videoId` da segunda r
+         +esposta                                                        
+      65 +    - expect: `title = 'Minha aula'` (o informado, após trim)  
+      66 +                                                               
+      67  ### 2. Regras de domínio (tamanho e teto de uploads ativos)
+      68 
+      69  **Setup:** mesmo do grupo 1.
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project/nestjs-project/specs && touch videos-upload-part-urls.plan.md
+      videos-upload-…)
+  ⎿  (No output)
+
+⏺ The Edit tool doesn't accept an identical old/new string, so I used the touch
+  alternative the skill allows for the 6 no-op bumps (mtime only, no git diff).
+  Committing stage 3.
+
+⏺ Bash(git add nestjs-project/specs/videos-uploads.plan.md && git commit -q -m
+      "docs: add phase 03 title default test scenario" && git log --oneline -4
+      && git status -…)
+  ⎿  (No output)
+
+⏺ The pipeline sync is done: three local commits, nothing pushed, no
+  Co-Authored-By. /plan-validate came back clean and the new title scenario is
+  in.
+
+  Stage: /plan-context
+  Commit: 2119624 docs: refresh phase 03 context
+  Result: UI deferred; only openapi-docs-nestjs selected in the correlator;
+    the leader's 5 **Note:** fields added to Decisions Detail (your choice)
+  ────────────────────────────────────────
+  Stage: /plan-validate
+  Commit: 44ad30f docs: phase 03 validation (iteration 3)
+  Result: status: clean, 0 issues; only sources_mtime changed
+  ────────────────────────────────────────
+  Stage: /plan-test-specs
+  Commit: da0a380 docs: add phase 03 title default test scenario
+  Result: 1 NEW scenario 1.3
+    titulo-padrao-do-filename-e-titulo-informado-com-trim (AC #8) in
+    videos-uploads.plan.md
+
+  About /plan-test-specs:
+  - No scenario was generated for AC #2. It only shows up as a coverage warning,
+    which is expected since it's checked in the unit test.
+  - 42 existing scenarios in the 7 specs are UPDATED, as you expected. Only
+    warnings were emitted, no content was touched.
+  - I bumped the mtime of the other 6 specs with touch. There's no git diff for
+    them, and all 7 now read as fresh against the plan.
+
+  Two things I did differently from a plain mechanical run:
+  - TD-07, TD-11 and TD-13: the subagent cut too much from their
+    Recommendations, so they started mid-sentence. I restored the wording
+    context.md already had, so they don't show up as changes.
+  - Plan frontmatter still points to old versions: the sources_mtime in
+    phase-03-videos.md still lists the old context.md (21:11) and the decisions
+    doc (21:09). Nothing in this pipeline refreshes it, and I left it untouched
+    because you said not to edit by hand. The leader's fix to the plan (2ce1c8a)
+    already left it this way. If /implement checks those entries, it may report
+    the plan as stale.
+
+  /export 19-pipeline-sync-phase-03.txt is a CLI command, so you need to type
+  it.
+
+  Summary:
+  1. Context regenerated with the leader's Notes and the new mtime, with no
+     other changes.
+  2. Validation came back clean, with the history of resolved issues kept.
+  3. New e2e scenario for AC #8 (default title from the fileName, and a given
+     title saved after trim); AC #2 intentionally not covered.
