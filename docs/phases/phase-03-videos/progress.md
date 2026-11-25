@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 11/21 completed
+**SIs:** 12/21 completed
 
 ### SI-03.1 — Infra: dependências, namespaces de configuração e variáveis de ambiente
 - **Status:** completed
@@ -113,9 +113,12 @@
   - After the abort, MinIO answers the PUT to the old part URL with `404` and an XML body containing `NoSuchUpload`. The e2e asserts both. The integration test checks that `listAllParts` of the aborted upload rejects with `name: 'NoSuchUpload'`. That is the raw S3 error; only `completeMultipartUpload` maps it to a storage error.
 
 ### SI-03.12 — Endpoint GET /videos/:id
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 9 new, passing for the SI: `src/videos/videos.service.spec.ts` +4 (41 total), `test/videos-detail.e2e-spec.ts` 5 (the 5 spec scenarios)
+- **Observations:**
+  - `getOwned` = `findOwnedOrFail` + the `toResponse` added in SI-03.10. There is no state check: the owner sees any `processing_status`. The unit tests here cover `toResponse`'s `thumbnailUrl` branch: `publicObjectUrl(thumbnailsBucket, thumbnail_key)` when `thumbnail_key` is set, otherwise `null` with no storage call.
+  - The e2e thumbnail scenario writes a 4-byte JPEG frame to `thumbnails-test` with `StorageService.putObject` (`ContentType: image/jpeg`). An anonymous `fetch` of `thumbnailUrl` returns `200` + `image/jpeg`, with no `X-Amz-*` in the URL. The object is deleted in a `finally`.
+  - The e2e checks that the body has no `uploadId`/`upload_id`/`sourceKey`/`source_key`/`channelId`/`channel_id`. The mapper never copies them, so this guards against a future regression.
 
 ### SI-03.13 — Guard de autenticação opcional (`@OptionalAuth`)
 - **Status:** pending

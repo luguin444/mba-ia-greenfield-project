@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  Get,
   HttpCode,
   HttpStatus,
   Param,
@@ -203,5 +204,39 @@ export class VideosController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<void> {
     await this.videosService.abortUpload(id, user.sub);
+  }
+
+  @Get(':id')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get one of my videos',
+    description:
+      'Returns the current status and metadata of a video owned by the caller. Used to poll processing after completing the upload.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'The video in its current status',
+    type: VideoResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Validation failed (id is not a uuid)',
+    schema: ERROR_SCHEMA,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Missing or invalid access token',
+    schema: ERROR_SCHEMA,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Video not found or not owned by the caller (VIDEO_NOT_FOUND)',
+    schema: ERROR_SCHEMA,
+  })
+  async getOwned(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<VideoResponseDto> {
+    return this.videosService.getOwned(id, user.sub);
   }
 }

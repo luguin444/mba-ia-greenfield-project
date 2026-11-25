@@ -275,6 +275,11 @@ export class VideosService {
     return this.toResponse(await this.reload(video.id));
   }
 
+  /** Owner-only detail and status, polled while the video is processed. */
+  async getOwned(id: string, userId: string): Promise<VideoResponseDto> {
+    return this.toResponse(await this.findOwnedOrFail(id, userId));
+  }
+
   /**
    * Owner abort: frees the storage space of the parts and the channel's
    * active-upload slot. An upload already gone from storage is not an error.

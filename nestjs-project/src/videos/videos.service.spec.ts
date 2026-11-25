@@ -680,4 +680,55 @@ describe('VideosService', () => {
       expect(processingQueue.add).not.toHaveBeenCalled();
     });
   });
+
+  describe('getOwned', () => {
+    it('should build thumbnailUrl with publicObjectUrl on the thumbnails bucket when thumbnail_key is set', async () => {
+      videoRepository.findOne.mockResolvedValue(
+        videoFixture({
+          processing_status: VideoProcessingStatus.READY,
+          upload_id: null,
+          thumbnail_key: `${VIDEO_ID}/default.jpg`,
+        }),
+      );
+
+      const result = await service.getOwned(VIDEO_ID, USER_ID);
+
+      expect(storageService.publicObjectUrl).toHaveBeenCalledWith(
+        'thumbnails-test',
+        `${VIDEO_ID}/default.jpg`,
+      );
+      expect(result.thumbnailUrl).toBe(
+        `http://minio.localhost:9000/thumbnails-test/${VIDEO_ID}/default.jpg`,
+      );
+    });
+
+    it('should return a null thumbnailUrl when there is no thumbnail_key', async () => {
+      const result = await service.getOwned(VIDEO_ID, USER_ID);
+
+      expect(result.thumbnailUrl).toBeNull();
+      expect(storageService.publicObjectUrl).not.toHaveBeenCalled();
+    });
+
+    it('should answer any status, not only uploading', async () => {
+      videoRepository.findOne.mockResolvedValue(
+        videoFixture({
+          processing_status: VideoProcessingStatus.FAILED,
+          upload_id: null,
+        }),
+      );
+
+      await expect(service.getOwned(VIDEO_ID, USER_ID)).resolves.toMatchObject({
+        id: VIDEO_ID,
+        processingStatus: VideoProcessingStatus.FAILED,
+      });
+    });
+
+    it('should reject VIDEO_NOT_FOUND for a video of another channel', async () => {
+      channelsService.findIdByUserId.mockResolvedValue('other-channel');
+
+      await expect(service.getOwned(VIDEO_ID, USER_ID)).rejects.toBeInstanceOf(
+        VideoNotFoundException,
+      );
+    });
+  });
 });
