@@ -992,7 +992,7 @@
 
 ⏺ Bash(sed -n '/^## Inherited Decisions Detail/,/^## Inherited Conventions/p'
       docs/phases/phase-03-videos/context.md >
-      /private/tmp/claude-501/-Users-luisgustavoganimi…)
+      /private/tmp/claude-501/-Users-USER…)
   ⎿  (No output)
 
 ⏺ Agent "phases-reader phase 03" finished · 1m 19s
