@@ -1,4 +1,12 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Post,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -12,6 +20,8 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { ApiErrorEnvelope } from '../common/openapi/api-error-envelope.dto';
 import { InitiateUploadResponseDto } from './dto/initiate-upload-response.dto';
 import { InitiateUploadDto } from './dto/initiate-upload.dto';
+import { PartUrlsResponseDto } from './dto/part-urls-response.dto';
+import { PartUrlsDto } from './dto/part-urls.dto';
 import { VideosService } from './videos.service';
 
 const ERROR_SCHEMA = { $ref: getSchemaPath(ApiErrorEnvelope) };
@@ -66,5 +76,47 @@ export class VideosController {
     @Body() dto: InitiateUploadDto,
   ): Promise<InitiateUploadResponseDto> {
     return this.videosService.initiateUpload(user.sub, dto);
+  }
+
+  @Post(':id/upload/part-urls')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Sign part URLs (resume an upload)',
+    description:
+      'Lists the parts already stored and signs the missing ones (the first 100, ascending), or exactly the requested `partNumbers`, which may be re-PUT. Also marks the upload as active for the maintenance sweep.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Parts already stored and newly signed part URLs',
+    type: PartUrlsResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Validation failed, or a part number is above partCount (INVALID_PART_NUMBER)',
+    schema: ERROR_SCHEMA,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Missing or invalid access token',
+    schema: ERROR_SCHEMA,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Video not found or not owned by the caller (VIDEO_NOT_FOUND)',
+    schema: ERROR_SCHEMA,
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'The video is not uploading (INVALID_VIDEO_STATE)',
+    schema: ERROR_SCHEMA,
+  })
+  async signPartUrls(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: PartUrlsDto,
+  ): Promise<PartUrlsResponseDto> {
+    return this.videosService.signPartUrls(id, user.sub, dto);
   }
 }

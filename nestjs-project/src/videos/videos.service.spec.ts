@@ -1,14 +1,22 @@
 import { Test } from '@nestjs/testing';
+import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource, QueryFailedError } from 'typeorm';
 import { ChannelsService } from '../channels/channels.service';
 import videoConfig from '../config/video.config';
 import { StorageService } from '../storage/storage.service';
 import type { InitiateUploadDto } from './dto/initiate-upload.dto';
-import { Video, VideoProcessingStatus } from './entities/video.entity';
+import {
+  Video,
+  VideoProcessingStatus,
+  VideoPublicationStatus,
+} from './entities/video.entity';
 import * as publicIdUtil from './public-id.util';
 import {
   ActiveUploadLimitReachedException,
   ChannelNotFoundException,
+  InvalidPartNumberException,
+  InvalidVideoStateException,
+  VideoNotFoundException,
   VideoTooLargeException,
 } from './videos.exceptions';
 import { VideosService } from './videos.service';
@@ -18,6 +26,7 @@ const MIB = 1024 * 1024;
 const USER_ID = 'user-1';
 const CHANNEL_ID = 'channel-1';
 const UPLOAD_ID = 'upload-1';
+const VIDEO_ID = '0b6f3a8e-6f25-4d5e-9a57-0d7cbe0f4c11';
 
 const DEFAULT_CONFIG = {
   maxUploadBytes: 10 * GIB,
@@ -51,6 +60,44 @@ function initiateDto(
   };
 }
 
+function videoFixture(overrides: Partial<Video> = {}): Video {
+  return {
+    id: VIDEO_ID,
+    public_id: 'abcdefghijk',
+    title: 'aula',
+    channel_id: CHANNEL_ID,
+    processing_status: VideoProcessingStatus.UPLOADING,
+    publication_status: VideoPublicationStatus.DRAFT,
+    failure_reason: null,
+    original_filename: 'aula.mp4',
+    mime_type: 'video/mp4',
+    size_bytes: 250 * 5 * MIB,
+    upload_id: UPLOAD_ID,
+    upload_part_size_bytes: 5 * MIB,
+    source_key: `${VIDEO_ID}/source`,
+    thumbnail_key: null,
+    duration_seconds: null,
+    width: null,
+    height: null,
+    video_codec: null,
+    audio_codec: null,
+    format_name: null,
+    processed_at: null,
+    created_at: new Date('2026-11-25T10:00:00Z'),
+    updated_at: new Date('2026-11-25T10:00:00Z'),
+    channel: undefined as never,
+    ...overrides,
+  };
+}
+
+function storedParts(...partNumbers: number[]) {
+  return partNumbers.map((partNumber) => ({
+    partNumber,
+    eTag: `"etag-${partNumber}"`,
+    size: 5 * MIB,
+  }));
+}
+
 describe('VideosService', () => {
   let service: VideosService;
   let channelsService: {
@@ -61,7 +108,9 @@ describe('VideosService', () => {
     createMultipartUpload: jest.Mock;
     abortMultipartUpload: jest.Mock;
     presignUploadPart: jest.Mock;
+    listAllParts: jest.Mock;
   };
+  let videoRepository: { findOne: jest.Mock; update: jest.Mock };
   let manager: {
     count: jest.Mock;
     query: jest.Mock;
@@ -76,6 +125,7 @@ describe('VideosService', () => {
     const moduleRef = await Test.createTestingModule({
       providers: [
         VideosService,
+        { provide: getRepositoryToken(Video), useValue: videoRepository },
         { provide: DataSource, useValue: dataSource },
         { provide: ChannelsService, useValue: channelsService },
         { provide: StorageService, useValue: storageService },
@@ -100,6 +150,11 @@ describe('VideosService', () => {
         (key: string, _uploadId: string, partNumber: number) =>
           Promise.resolve(`http://storage/${key}?partNumber=${partNumber}`),
       ),
+      listAllParts: jest.fn().mockResolvedValue([]),
+    };
+    videoRepository = {
+      findOne: jest.fn().mockResolvedValue(videoFixture()),
+      update: jest.fn().mockResolvedValue({ affected: 1 }),
     };
     manager = {
       count: jest.fn().mockResolvedValue(0),
@@ -312,6 +367,98 @@ describe('VideosService', () => {
       ).rejects.toBeInstanceOf(QueryFailedError);
       expect(manager.save).toHaveBeenCalledTimes(5);
       expect(storageService.abortMultipartUpload).toHaveBeenCalled();
+    });
+  });
+
+  describe('signPartUrls', () => {
+    it('should sign the first 100 missing parts in ascending order when no partNumbers are given', async () => {
+      storageService.listAllParts.mockResolvedValue(storedParts(5, 1, 2));
+
+      const result = await service.signPartUrls(VIDEO_ID, USER_ID, {});
+
+      const expected = [3, 4, ...Array.from({ length: 98 }, (_, i) => i + 6)];
+      expect(result.parts.map((part) => part.partNumber)).toEqual(expected);
+      expect(result.uploadedParts.map((part) => part.partNumber)).toEqual([
+        1, 2, 5,
+      ]);
+      expect(result.uploadedParts[0]).toEqual({
+        partNumber: 1,
+        size: 5 * MIB,
+        etag: '"etag-1"',
+      });
+      expect(result.partCount).toBe(250);
+      expect(result.partSize).toBe(5 * MIB);
+    });
+
+    it('should return no part URLs when every part is already stored', async () => {
+      videoRepository.findOne.mockResolvedValue(
+        videoFixture({ size_bytes: 12 * MIB }),
+      );
+      storageService.listAllParts.mockResolvedValue(storedParts(1, 2, 3));
+
+      const result = await service.signPartUrls(VIDEO_ID, USER_ID, {});
+
+      expect(result.parts).toEqual([]);
+      expect(storageService.presignUploadPart).not.toHaveBeenCalled();
+    });
+
+    it('should sign exactly the requested partNumbers, even already stored ones', async () => {
+      storageService.listAllParts.mockResolvedValue(storedParts(1));
+
+      const result = await service.signPartUrls(VIDEO_ID, USER_ID, {
+        partNumbers: [7, 1],
+      });
+
+      expect(result.parts.map((part) => part.partNumber)).toEqual([1, 7]);
+    });
+
+    it('should reject INVALID_PART_NUMBER above partCount without signing or touching the row', async () => {
+      await expect(
+        service.signPartUrls(VIDEO_ID, USER_ID, { partNumbers: [1, 251] }),
+      ).rejects.toBeInstanceOf(InvalidPartNumberException);
+
+      expect(storageService.presignUploadPart).not.toHaveBeenCalled();
+      expect(videoRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('should touch updated_at with a conditional update on the uploading row', async () => {
+      await service.signPartUrls(VIDEO_ID, USER_ID, {});
+
+      expect(videoRepository.update).toHaveBeenCalledWith(
+        { id: VIDEO_ID, processing_status: VideoProcessingStatus.UPLOADING },
+        { updated_at: expect.any(Function) as unknown },
+      );
+    });
+
+    it.each([
+      ['does not exist', null, CHANNEL_ID],
+      ['belongs to another channel', videoFixture(), 'other-channel'],
+      ['exists but the caller has no channel', videoFixture(), null],
+    ])(
+      'should reject VIDEO_NOT_FOUND when the video %s',
+      async (_case, video, callerChannelId) => {
+        videoRepository.findOne.mockResolvedValue(video);
+        channelsService.findIdByUserId.mockResolvedValue(callerChannelId);
+
+        await expect(
+          service.signPartUrls(VIDEO_ID, USER_ID, {}),
+        ).rejects.toBeInstanceOf(VideoNotFoundException);
+        expect(storageService.listAllParts).not.toHaveBeenCalled();
+      },
+    );
+
+    it('should reject INVALID_VIDEO_STATE when the video is no longer uploading', async () => {
+      videoRepository.findOne.mockResolvedValue(
+        videoFixture({
+          processing_status: VideoProcessingStatus.PROCESSING,
+          upload_id: null,
+        }),
+      );
+
+      await expect(
+        service.signPartUrls(VIDEO_ID, USER_ID, {}),
+      ).rejects.toBeInstanceOf(InvalidVideoStateException);
+      expect(storageService.listAllParts).not.toHaveBeenCalled();
     });
   });
 });

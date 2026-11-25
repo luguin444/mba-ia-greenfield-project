@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 8/21 completed
+**SIs:** 9/21 completed
 
 ### SI-03.1 — Infra: dependências, namespaces de configuração e variáveis de ambiente
 - **Status:** completed
@@ -86,9 +86,12 @@
   - The `pg` warning "Calling client.query() when the client is already executing a query" predates this SI: `channels.service.integration-spec.ts` and `videos.module.spec.ts` print it too. It comes from TypeORM `synchronize` in the test DataSource.
 
 ### SI-03.9 — Endpoint POST /videos/:id/upload/part-urls
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 19 new, passing for the SI: `src/videos/videos.service.spec.ts` +9 (26 total), `src/videos/videos.service.integration-spec.ts` +3 (7 total), `test/videos-upload-part-urls.e2e-spec.ts` 7 (the 7 spec scenarios). `test/videos-uploads.e2e-spec.ts` re-run: 8/8
+- **Observations:**
+  - `findOwnedOrFail` loads the video and the caller's channel id (`ChannelsService.findIdByUserId`) in parallel. A missing video, another channel's video, and a caller without a channel all give the same `VideoNotFoundException`. `assertUploading` is a TS assertion function (`asserts video is UploadingVideo`), so `upload_id` is narrowed to `string` in later code. It also rejects `uploading` with a `null` `upload_id`, which the state machine never produces.
+  - `INVALID_PART_NUMBER` is checked before `ListParts` (pure input check, no I/O). The plan lists the steps in the other order, but the response is the same. Explicit `partNumbers` are signed in ascending order.
+  - `updated_at` is touched with `update({ id, processing_status: 'uploading' }, { updated_at: () => 'CURRENT_TIMESTAMP' })`. It uses the DB clock, like the column default, so no app/DB clock skew. It runs after the presign, so a failed presign does not count as activity.
 
 ### SI-03.10 — Endpoint POST /videos/:id/upload/complete
 - **Status:** pending

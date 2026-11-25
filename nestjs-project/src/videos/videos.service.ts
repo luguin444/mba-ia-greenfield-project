@@ -1,13 +1,21 @@
 import { randomUUID } from 'crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
-import { DataSource, EntityManager, QueryFailedError } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
+import {
+  DataSource,
+  EntityManager,
+  QueryFailedError,
+  Repository,
+} from 'typeorm';
 import { ChannelsService } from '../channels/channels.service';
 import videoConfig from '../config/video.config';
 import { StorageService } from '../storage/storage.service';
 import type { InitiateUploadResponseDto } from './dto/initiate-upload-response.dto';
 import type { InitiateUploadDto } from './dto/initiate-upload.dto';
 import type { PartUrlDto } from './dto/part-url.dto';
+import type { PartUrlsResponseDto } from './dto/part-urls-response.dto';
+import type { PartUrlsDto } from './dto/part-urls.dto';
 import {
   Video,
   VideoProcessingStatus,
@@ -22,6 +30,9 @@ import {
 import {
   ActiveUploadLimitReachedException,
   ChannelNotFoundException,
+  InvalidPartNumberException,
+  InvalidVideoStateException,
+  VideoNotFoundException,
   VideoTooLargeException,
 } from './videos.exceptions';
 
@@ -32,6 +43,9 @@ interface UploadLayout {
   partSize: number;
   partCount: number;
 }
+
+/** A video whose multipart upload is still open. */
+type UploadingVideo = Video & { upload_id: string };
 
 type NewVideoFields = Omit<
   Partial<Video>,
@@ -64,6 +78,8 @@ export class VideosService {
   private readonly logger = new Logger(VideosService.name);
 
   constructor(
+    @InjectRepository(Video)
+    private readonly videoRepository: Repository<Video>,
     private readonly dataSource: DataSource,
     private readonly channelsService: ChannelsService,
     private readonly storageService: StorageService,
@@ -81,7 +97,7 @@ export class VideosService {
       throw new VideoTooLargeException();
     }
 
-    const { partSize, partCount } = this.uploadLayout(dto.sizeBytes);
+    const { partSize, partCount } = this.layoutFor(dto.sizeBytes);
     const video = await this.dataSource.transaction(async (manager) => {
       const lockedChannelId = await this.channelsService.lockIdByUserId(
         manager,
@@ -129,7 +145,10 @@ export class VideosService {
       { length: Math.min(partCount, MAX_SIGNED_PARTS_PER_BATCH) },
       (_, index) => index + 1,
     );
-    const { parts, expiresAt } = await this.signParts(video, firstBatch);
+    const { parts, expiresAt } = await this.signParts(
+      video as UploadingVideo,
+      firstBatch,
+    );
     return {
       videoId: video.id,
       publicId: video.public_id,
@@ -141,13 +160,106 @@ export class VideosService {
     };
   }
 
+  /**
+   * Resume path: lists the parts already stored and signs the missing ones
+   * (or exactly `dto.partNumbers`). Touches `updated_at`, the "last upload
+   * activity" read by the maintenance sweep.
+   */
+  async signPartUrls(
+    id: string,
+    userId: string,
+    dto: PartUrlsDto,
+  ): Promise<PartUrlsResponseDto> {
+    const video = await this.findOwnedOrFail(id, userId);
+    this.assertUploading(video);
+    const { partSize, partCount } = this.layoutOf(video);
+    if (dto.partNumbers?.some((partNumber) => partNumber > partCount)) {
+      throw new InvalidPartNumberException();
+    }
+
+    const stored = await this.storageService.listAllParts(
+      video.source_key,
+      video.upload_id,
+    );
+    const uploadedParts = stored
+      .map((part) => ({
+        partNumber: part.partNumber,
+        size: part.size,
+        etag: part.eTag,
+      }))
+      .sort((a, b) => a.partNumber - b.partNumber);
+    const storedNumbers = new Set(stored.map((part) => part.partNumber));
+    const toSign = dto.partNumbers
+      ? [...dto.partNumbers].sort((a, b) => a - b)
+      : this.missingPartNumbers(storedNumbers, partCount).slice(
+          0,
+          MAX_SIGNED_PARTS_PER_BATCH,
+        );
+
+    const { parts, expiresAt } = await this.signParts(video, toSign);
+    await this.videoRepository.update(
+      { id: video.id, processing_status: VideoProcessingStatus.UPLOADING },
+      { updated_at: () => 'CURRENT_TIMESTAMP' },
+    );
+    return {
+      videoId: video.id,
+      uploadId: video.upload_id,
+      partSize,
+      partCount,
+      uploadedParts,
+      parts,
+      expiresAt,
+    };
+  }
+
+  /**
+   * Hide, don't forbid: a missing video and a video of another channel are
+   * the same `VIDEO_NOT_FOUND`, so the caller cannot probe for existence.
+   */
+  private async findOwnedOrFail(id: string, userId: string): Promise<Video> {
+    const [video, channelId] = await Promise.all([
+      this.videoRepository.findOne({ where: { id } }),
+      this.channelsService.findIdByUserId(userId),
+    ]);
+    if (!video || video.channel_id !== channelId) {
+      throw new VideoNotFoundException();
+    }
+    return video;
+  }
+
+  private assertUploading(video: Video): asserts video is UploadingVideo {
+    if (
+      video.processing_status !== VideoProcessingStatus.UPLOADING ||
+      video.upload_id === null
+    ) {
+      throw new InvalidVideoStateException();
+    }
+  }
+
+  private missingPartNumbers(
+    storedNumbers: ReadonlySet<number>,
+    partCount: number,
+  ): number[] {
+    const missing: number[] = [];
+    for (let partNumber = 1; partNumber <= partCount; partNumber++) {
+      if (!storedNumbers.has(partNumber)) missing.push(partNumber);
+    }
+    return missing;
+  }
+
   /** `partSize = max(configured, ceil(size / 10000))`, frozen at initiate. */
-  private uploadLayout(sizeBytes: number): UploadLayout {
+  private layoutFor(sizeBytes: number): UploadLayout {
     const partSize = Math.max(
       this.config.uploadPartSizeBytes,
       Math.ceil(sizeBytes / MAX_UPLOAD_PARTS),
     );
     return { partSize, partCount: Math.ceil(sizeBytes / partSize) };
+  }
+
+  /** Layout frozen on the row at initiate (`partCount` is derived, not stored). */
+  private layoutOf(video: Video): UploadLayout {
+    const partSize = video.upload_part_size_bytes;
+    return { partSize, partCount: Math.ceil(video.size_bytes / partSize) };
   }
 
   /**
@@ -199,7 +311,7 @@ export class VideosService {
   }
 
   private async signParts(
-    video: Video,
+    video: UploadingVideo,
     partNumbers: number[],
   ): Promise<{ parts: PartUrlDto[]; expiresAt: string }> {
     const ttlSeconds = this.config.uploadPartUrlTtlSeconds;
@@ -209,7 +321,7 @@ export class VideosService {
         partNumber,
         url: await this.storageService.presignUploadPart(
           video.source_key,
-          video.upload_id as string,
+          video.upload_id,
           partNumber,
           ttlSeconds,
         ),

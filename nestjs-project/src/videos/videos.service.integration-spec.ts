@@ -23,13 +23,25 @@ import {
   VideoPublicationStatus,
 } from './entities/video.entity';
 import * as publicIdUtil from './public-id.util';
-import { ActiveUploadLimitReachedException } from './videos.exceptions';
+import {
+  ActiveUploadLimitReachedException,
+  VideoNotFoundException,
+} from './videos.exceptions';
 import { VideosModule } from './videos.module';
 import { VideosService } from './videos.service';
 
 const ALL_ENTITIES = [User, Channel, RefreshToken, VerificationToken, Video];
 const MIB = 1024 * 1024;
 const MAX_ACTIVE_UPLOADS = 5;
+
+/** PUTs `size` bytes straight to a presigned part URL, like the browser does. */
+async function putPart(url: string, size: number): Promise<void> {
+  const response = await fetch(url, {
+    method: 'PUT',
+    body: new Uint8Array(Buffer.alloc(size, 1)),
+  });
+  expect(response.status).toBe(200);
+}
 
 describe('VideosService (integration, Postgres + MinIO + Redis)', () => {
   let moduleRef: TestingModule;
@@ -192,6 +204,65 @@ describe('VideosService (integration, Postgres + MinIO + Redis)', () => {
       });
       expect(row.public_id).toBe(result.publicId);
       await expect(videoRepository.count()).resolves.toBe(2);
+    });
+  });
+
+  describe('signPartUrls', () => {
+    it('should list a really uploaded part 1 and sign the missing parts from 2 on', async () => {
+      const { userId } = await createUserWithChannel('owner');
+      const initiated = await service.initiateUpload(
+        userId,
+        initiateDto({ sizeBytes: 12 * MIB }),
+      );
+      await putPart(initiated.parts[0].url, 5 * MIB);
+
+      const result = await service.signPartUrls(initiated.videoId, userId, {});
+
+      expect(result.uploadedParts).toHaveLength(1);
+      expect(result.uploadedParts[0]).toMatchObject({
+        partNumber: 1,
+        size: 5 * MIB,
+      });
+      expect(result.uploadedParts[0].etag).toBeTruthy();
+      expect(result.parts.map((part) => part.partNumber)).toEqual([2, 3]);
+    });
+
+    it('should advance updated_at', async () => {
+      const { userId } = await createUserWithChannel('owner');
+      const initiated = await service.initiateUpload(userId, initiateDto());
+      const before = await videoRepository.findOneByOrFail({
+        id: initiated.videoId,
+      });
+
+      await service.signPartUrls(initiated.videoId, userId, {});
+
+      const after = await videoRepository.findOneByOrFail({
+        id: initiated.videoId,
+      });
+      expect(after.updated_at.getTime()).toBeGreaterThan(
+        before.updated_at.getTime(),
+      );
+    });
+
+    it('should reject VIDEO_NOT_FOUND for a caller who does not own the video, leaving updated_at untouched', async () => {
+      const owner = await createUserWithChannel('owner');
+      const other = await createUserWithChannel('other');
+      const initiated = await service.initiateUpload(
+        owner.userId,
+        initiateDto(),
+      );
+      const before = await videoRepository.findOneByOrFail({
+        id: initiated.videoId,
+      });
+
+      await expect(
+        service.signPartUrls(initiated.videoId, other.userId, {}),
+      ).rejects.toBeInstanceOf(VideoNotFoundException);
+
+      const after = await videoRepository.findOneByOrFail({
+        id: initiated.videoId,
+      });
+      expect(after.updated_at).toEqual(before.updated_at);
     });
   });
 });
