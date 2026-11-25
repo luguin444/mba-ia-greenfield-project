@@ -57,8 +57,8 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 1. `Dockerfile.dev`: acrescentar `ffmpeg` ao `apt install -y` (traz `ffprobe`). A imagem é compartilhada por `nestjs-api` e `video-worker` e exige um `docker compose build` (per `phase-03-videos/TD-02`, `phase-03-videos/TD-03`).
 2. `compose.yaml`: serviço `redis` — `redis:8-alpine`, `redis-server --maxmemory-policy noeviction`, porta `6379`, healthcheck `redis-cli ping` (per `phase-03-videos/TD-01`).
 3. `compose.yaml`: serviço `minio` — `cgr.dev/chainguard/minio@sha256:<digest>` (digest fixado na implementação), `server /data --address :9000 --console-address :9001`, `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` iguais a `S3_ACCESS_KEY`/`S3_SECRET_KEY`, portas `9000:9000` + `9001:9001`, volume nomeado, alias de rede **`minio.localhost`** e healthcheck de readiness validado contra a imagem fixada (per `phase-03-videos/TD-08`, `phase-03-videos/TD-16`).
-4. `compose.yaml`: serviço one-shot `minio-init` — `cgr.dev/chainguard/minio-client@sha256:<digest>`, `depends_on: minio: service_healthy`; cria de forma idempotente `videos`, `thumbnails`, `videos-test` e `thumbnails-test`, aplica download anônimo em `thumbnails` e `thumbnails-test` e configura CORS expondo `ETag` para PUT/GET do browser (mecanismo verificado contra a imagem fixada) (per `phase-03-videos/TD-07`, `phase-03-videos/TD-14`).
-5. `compose.yaml`: `nestjs-api.depends_on` ganha `redis` e `minio` (`service_healthy`) e `minio-init` (`service_completed_successfully`).
+4. `compose.yaml`: serviço one-shot `minio-init` com a imagem **`cgr.dev/chainguard/minio`** (mesmo digest; a `minio-client` não tem `sh`), `entrypoint: ["sh", "-c"]`, `depends_on: minio: service_healthy`; script idempotente com `mc alias set`, `mc mb -p` de `videos`, `thumbnails`, `videos-test` e `thumbnails-test` e `mc anonymous set download` nos dois de thumbnails; **sem CORS por bucket** (o CORS padrão do MinIO já expõe `ETag`). E `nestjs-api.depends_on` ganha `redis` e `minio` (`service_healthy`) e `minio-init` (`service_completed_successfully`) (per `phase-03-videos/TD-07`, `phase-03-videos/TD-08` Note, `phase-03-videos/TD-14`).
+5. `CLAUDE.md` da raiz, seção "Docker Networking": registrar a exceção `S3_PUBLIC_ENDPOINT=http://minio.localhost:9000` com o texto de `### Configuration & Infrastructure` → "Docker Networking exception", incluindo o aviso de que curl não serve para testar `*.localhost` de dentro de container (per `phase-03-videos/TD-16` e Note).
 
 **Tests:** _(empty — Infra; verificado pelos ACs de container e pela suíte existente seguindo verde)_
 
@@ -69,7 +69,9 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 - `docker compose build && docker compose up -d` deixa `redis` e `minio` healthy e `minio-init` sai com código 0; um segundo `docker compose up -d` também termina com `minio-init` em código 0 (init idempotente).
 - `docker compose exec nestjs-api ffprobe -version` e `docker compose exec nestjs-api ffmpeg -version` saem com código 0.
 - `docker compose exec redis redis-cli ping` responde `PONG`.
-- Dentro de `nestjs-api`, `curl http://minio.localhost:9000/minio/health/ready` retorna `200` (o alias resolve para o serviço de storage, não para o loopback do container); do host, a mesma URL também retorna `200`.
+- Dentro de `nestjs-api`, `node -e "fetch('http://minio.localhost:9000/minio/health/ready').then(r => process.exit(r.status === 200 ? 0 : 1))"` sai com código 0 (o alias resolve para o serviço de storage, não para o loopback do container; curl não serve aqui, ver `phase-03-videos/TD-16` Note); do host, `curl http://minio.localhost:9000/minio/health/ready` retorna `200`.
+- Um GET com `Origin` num objeto de `thumbnails` responde com `Access-Control-Expose-Headers` contendo `ETag` (CORS padrão do MinIO).
+- O `CLAUDE.md` da raiz documenta a exceção `minio.localhost` em "Docker Networking".
 - GET anônimo de um objeto em `thumbnails` retorna `200`; GET anônimo de um objeto em `videos` retorna `403`.
 - `npm test` e `npm run test:e2e` seguem verdes com a nova topologia.
 
@@ -84,7 +86,7 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 1. Criar `src/test/setup-test-env.ts`, que força em `process.env`: `QUEUE_PREFIX=test`, `S3_VIDEOS_BUCKET=videos-test`, `S3_THUMBNAILS_BUCKET=thumbnails-test`, `VIDEO_MAX_UPLOAD_BYTES=12582912`, `VIDEO_UPLOAD_PART_SIZE_BYTES=5242880` (per `### Configuration & Infrastructure` → Test environment isolation; `phase-03-videos/TD-14`, `phase-03-videos/TD-06`).
 2. `package.json` → `jest.setupFiles`: `["dotenv/config", "<rootDir>/test/setup-test-env.ts"]` (o `rootDir` desse config é `src`), com o setup **depois** de `dotenv/config`.
 3. `test/jest-e2e.json` → `setupFiles`: `["dotenv/config", "<rootDir>/src/test/setup-test-env.ts"]` (o `rootDir` desse config é `.`).
-4. `package.json` → script `test:e2e`: `jest --config ./test/jest-e2e.json --runInBand`.
+4. `package.json` → scripts `test`: `jest --runInBand` e `test:e2e`: `jest --config ./test/jest-e2e.json --runInBand` (as integrações novas compartilham fila `test` e buckets `-test`, e o critério do desafio cita literalmente `npm test`).
 
 **Tests:**
 
@@ -97,7 +99,7 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 **Acceptance criteria:**
 
 - Dentro do Jest (unit/integration e e2e), `QUEUE_PREFIX` vale `test` e os buckets valem `videos-test`/`thumbnails-test`, mesmo com o `.env` definindo `bull`/`videos`/`thumbnails`.
-- `npm run test:e2e` executa os arquivos em série e a suíte segue verde.
+- `npm test` e `npm run test:e2e` executam os arquivos em série, sem `-- --runInBand` manual, e as suítes seguem verdes.
 - Os containers (`nestjs-api` em dev e, depois, `video-worker`) continuam lendo `QUEUE_PREFIX=bull` e os buckets de produção; o override existe só no processo do Jest.
 
 ---
@@ -118,14 +120,14 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 
 | Artifact | Layer | Test file |
 |----------|-------|-----------|
-| `Video` | Integration: defaults (`uploading`, `draft`), `public_id` único (`23505`), FK `channel_id`, round-trip `bigint` como `number`, metadados nuláveis | `src/videos/entities/video.entity.integration-spec.ts` |
+| `Video` | Integration: defaults (`uploading`, `draft`), `title` not null, `public_id` único (`23505`), FK `channel_id`, round-trip `bigint` como `number`, metadados nuláveis | `src/videos/entities/video.entity.integration-spec.ts` |
 | Migrations | Integration: 3 migrations aplicadas; `videos` e os 2 enum types gerenciados; revert limpo | `src/database/migrations.integration-spec.ts` |
 
 **Dependencies:** none
 
 **Acceptance criteria:**
 
-- Inserir um `Video` só com os campos obrigatórios grava `processing_status = 'uploading'` e `publication_status = 'draft'`.
+- Inserir um `Video` só com os campos obrigatórios (incluindo `title`) grava `processing_status = 'uploading'` e `publication_status = 'draft'`; sem `title`, o insert viola o `NOT NULL`.
 - Inserir dois vídeos com o mesmo `public_id` viola a constraint única (`23505`).
 - Inserir um vídeo com `channel_id` inexistente viola a FK.
 - `size_bytes = 10737418240` é lido de volta como o `number` `10737418240`.
@@ -180,7 +182,7 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 
 | Artifact | Layer | Test file |
 |----------|-------|-----------|
-| `QueueModule` | Unit: compilação com `queueConfig` real; as duas filas resolvem com prefixo `test`; `processVideoJobOptions` deduplica por `jobId` | `src/queue/queue.module.spec.ts` |
+| `QueueModule` | Integration (Redis real): compilação com `queueConfig` real; as duas filas resolvem com prefixo `test`; `processVideoJobOptions` deduplica por `jobId` | `src/queue/queue.module.integration-spec.ts` |
 
 **Dependencies:** SI-03.3 — o prefixo `test` precisa estar ativo no Jest antes de qualquer fila ser criada nos testes.
 
@@ -202,7 +204,7 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 1. Criar `src/videos/videos.exceptions.ts` com as 9 subclasses de `DomainException` do `### Error Catalog`, com código, status HTTP e mensagem literais (inherited `phase-02-auth/TD-07`).
 2. Criar `src/videos/public-id.util.ts`: `generatePublicId()` (`randomBytes(8).toString('base64url')`, 11 caracteres) e `PUBLIC_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/` (per `phase-03-videos/TD-09`).
 3. `ChannelsService` ganha `findIdByUserId(userId)` e `lockIdByUserId(manager, userId)` (`pessimistic_write` dentro da transação do chamador), ambos retornando `string | null`, para que o domínio de vídeos não consulte `channels` diretamente (per `phase-03-videos/TD-15`).
-4. Criar `src/videos/dto/video-response.dto.ts` (`VideoResponseDto` com `@ApiProperty` dos 18 campos de `VideoResponse`) e `src/videos/video-response.mapper.ts` com `toVideoResponse(video, thumbnailUrl)` (snake_case → camelCase, datas em ISO-8601) (inherited `openapi-docs-nestjs/TD-01`).
+4. Criar `src/videos/dto/video-response.dto.ts` (`VideoResponseDto` com `@ApiProperty` dos 19 campos de `VideoResponse`, incluindo `title`) e `src/videos/video-response.mapper.ts` com `toVideoResponse(video, thumbnailUrl)` (snake_case → camelCase, datas em ISO-8601) (inherited `openapi-docs-nestjs/TD-01`).
 5. Criar `src/videos/videos.module.ts` (`TypeOrmModule.forFeature([Video])`, imports `ChannelsModule`, `StorageModule`, `QueueModule`) e registrá-lo em `AppModule`.
 
 **Tests:**
@@ -236,8 +238,8 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 
 **Technical actions:**
 
-1. Criar `src/videos/dto/initiate-upload.dto.ts` (`fileName` trim 1–255, `sizeBytes` `@IsInt` `@Min(1)`, `mimeType` máx. 127 + `^video\/[\w.+-]+$`), `src/videos/dto/part-url.dto.ts` e `src/videos/dto/initiate-upload-response.dto.ts` (per `#### Validation Rules — video endpoints`; inherited `phase-02-auth/TD-06`).
-2. `VideosService.initiateUpload(userId, dto)`, passos 1–2: canal via `ChannelsService.findIdByUserId` (`null` → `ChannelNotFoundException`); `sizeBytes > VIDEO_MAX_UPLOAD_BYTES` → `VideoTooLargeException`; `partSize = max(VIDEO_UPLOAD_PART_SIZE_BYTES, ceil(sizeBytes / 10000))` e `partCount = ceil(sizeBytes / partSize)` (per `phase-03-videos/TD-06`).
+1. Criar `src/videos/dto/initiate-upload.dto.ts` (`fileName` trim 1–255, `title` opcional trim 1–255, `sizeBytes` `@IsInt` `@Min(1)`, `mimeType` máx. 127 + `^video\/[\w.+-]+$`), `src/videos/dto/part-url.dto.ts` e `src/videos/dto/initiate-upload-response.dto.ts` (per `#### Validation Rules — video endpoints`; inherited `phase-02-auth/TD-06`).
+2. `VideosService.initiateUpload(userId, dto)`, passos 1–2: canal via `ChannelsService.findIdByUserId` (`null` → `ChannelNotFoundException`); `sizeBytes > VIDEO_MAX_UPLOAD_BYTES` → `VideoTooLargeException`; `partSize = max(VIDEO_UPLOAD_PART_SIZE_BYTES, ceil(sizeBytes / 10000))` e `partCount = ceil(sizeBytes / partSize)`; `title` = o informado ou, quando omitido, `fileName` sem a extensão (o `fileName` inteiro se ficar vazio) (per `phase-03-videos/TD-06`, `phase-03-videos/TD-05` Note).
 3. Passos 3–4 numa transação: `ChannelsService.lockIdByUserId(manager, userId)`; contagem de vídeos `uploading` do canal ≥ `VIDEO_MAX_ACTIVE_UPLOADS_PER_CHANNEL` → `ActiveUploadLimitReachedException`; `id = randomUUID()`, `createMultipartUpload('{id}/source')`, insert com `generatePublicId()` e retry em `23505` na coluna `public_id` (máx. 5, mesmo padrão do `ChannelsService`); se o insert falhar, `abortMultipartUpload` best-effort e rethrow (per `phase-03-videos/TD-05`, `phase-03-videos/TD-09`, `phase-03-videos/TD-13`).
 4. Passo 5: `presignUploadPart` para as partes `1..min(partCount, 100)` com TTL `VIDEO_UPLOAD_PART_URL_TTL_SECONDS` e resposta com `videoId`, `publicId`, `uploadId`, `partSize`, `partCount`, `parts`, `expiresAt`.
 5. Criar `src/videos/videos.controller.ts` (`@ApiTags('videos')`, `@SkipThrottle()`, `@Controller('videos')`) com `@Post('uploads')` `@HttpCode(201)`, `@ApiBearerAuth('access-token')`, `@ApiOperation` e um `@ApiResponse` por status (201 tipado; 400/401/404/409/413 via `getSchemaPath(ApiErrorEnvelope)`) (per `phase-03-videos/TD-13`; inherited `openapi-docs-nestjs/TD-01`).
@@ -246,7 +248,7 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 
 | Artifact | Layer | Test file |
 |----------|-------|-----------|
-| `VideosService.initiateUpload` | Unit: fórmula de `partSize`/`partCount`; `VIDEO_TOO_LARGE` sem nenhuma chamada ao storage; abort best-effort quando o insert falha; retry de `public_id` em `23505` | `src/videos/videos.service.spec.ts` |
+| `VideosService.initiateUpload` | Unit: fórmula de `partSize`/`partCount` (incluindo 10 GiB → 64 MiB / 160 partes); `title` padrão a partir do `fileName` (`aula.mp4` → `aula`, `.mp4` → `.mp4`); `VIDEO_TOO_LARGE` sem nenhuma chamada ao storage; abort best-effort quando o insert falha; retry de `public_id` em `23505` | `src/videos/videos.service.spec.ts` |
 | `VideosService.initiateUpload` | Integration (Postgres + MinIO): linha `uploading`/`draft` com `upload_id`; multipart aberto (`listAllParts` vazio); limite → `ACTIVE_UPLOAD_LIMIT_REACHED`; duas iniciações concorrentes no limite deixam só uma passar | `src/videos/videos.service.integration-spec.ts` |
 
 **Dependencies:** SI-03.7
@@ -254,7 +256,8 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 **Acceptance criteria:**
 
 - `POST /videos/uploads` com `{ fileName, sizeBytes, mimeType: "video/mp4" }` válidos retorna `201` com `videoId`, `publicId` de 11 caracteres, `uploadId`, `partSize`, `partCount`, `parts` (≤100, `partNumber` crescente) e `expiresAt`; o vídeo fica `uploading`/`draft`.
-- Para `sizeBytes = 10737418240` com os defaults, a resposta traz `partSize = 67108864` e `partCount = 160`.
+- Para `sizeBytes = 10737418240` com os defaults, o cálculo dá `partSize = 67108864` e `partCount = 160` (verificado no teste unitário: no Jest o teto de upload é 12 MiB, então via HTTP a mesma chamada retorna `413`).
+- Sem `title` no body, o vídeo é criado com o `fileName` sem extensão como título (`aula-01.mp4` → `aula-01`); com `title`, o informado (após trim) é gravado.
 - `sizeBytes` acima de `VIDEO_MAX_UPLOAD_BYTES` retorna `413` `VIDEO_TOO_LARGE`, sem criar linha nem multipart.
 - Com o canal já em `VIDEO_MAX_ACTIVE_UPLOADS_PER_CHANNEL` uploads `uploading`, retorna `409` `ACTIVE_UPLOAD_LIMIT_REACHED`.
 - `mimeType: "image/png"` ou uma chave desconhecida no body retorna `400` `VALIDATION_ERROR`.
@@ -411,7 +414,7 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 
 | Artifact | Layer | Test file |
 |----------|-------|-----------|
-| `JwtAuthGuard` | Unit: as 4 ramificações — opcional sem header (anônimo), opcional com token válido (popula `request.user`), opcional com token inválido/expirado (`401`), `@Public()` puro sem ler o header | `src/auth/guards/jwt-auth.guard.spec.ts` |
+| `JwtAuthGuard` | Unit: as 4 ramificações — opcional sem header (anônimo), opcional com token válido (popula `request.user`), opcional com token inválido/expirado (`401`; o token expirado é criado com `jwtService.sign(payload, { expiresIn: -60 })`, nunca com `exp` no payload, que conflita com o `signOptions.expiresIn` do módulo), `@Public()` puro sem ler o header | `src/auth/guards/jwt-auth.guard.spec.ts` |
 
 **Dependencies:** none
 
@@ -499,13 +502,13 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 1. Extrair `src/database/typeorm-options.ts` com `buildTypeOrmOptions(dbConfig)` (`autoLoadEntities: true`, `synchronize: false`), usado pelo `TypeOrmModule.forRootAsync` de `AppModule` e do `WorkerModule`, sem duplicar parâmetros de conexão (inherited conventions, phase 01).
 2. Criar `src/worker/worker.module.ts`: `ConfigModule.forRoot` com o `load` de `src/config/config-load.ts` + `envValidationSchema`, `TypeOrmModule.forRootAsync` com `buildTypeOrmOptions`, `TypeOrmModule.forFeature([Video])`, `QueueModule` e `StorageModule`; nenhum controller, `AuthModule` ou throttler (per `phase-03-videos/TD-02`).
 3. Criar `src/worker.ts`: `NestFactory.createApplicationContext(WorkerModule)` + `enableShutdownHooks()`, sem listener HTTP; script `start:worker` em `package.json` com `ts-node -r tsconfig-paths/register src/worker.ts` (mesmo padrão de `openapi:export`, sem disputar o `dist/` com o `start:dev` da API).
-4. `compose.yaml`: serviço `video-worker` com o mesmo `build`/volume do `nestjs-api`, `command` executando `npm run start:worker` e `depends_on` `db`/`redis`/`minio` (`service_healthy`) + `minio-init` (`service_completed_successfully`) (per `phase-03-videos/TD-02`, `phase-03-videos/TD-14`).
+4. `compose.yaml`: serviço `video-worker` com o mesmo `build`/volume do `nestjs-api`, `command` executando `npm run start:worker`, `restart: unless-stopped` (num clone novo ele sobe antes de `node_modules`/`.env`/migrations e precisa se recuperar) e `depends_on` `db`/`redis`/`minio` (`service_healthy`) + `minio-init` (`service_completed_successfully`) (per `phase-03-videos/TD-02`, `phase-03-videos/TD-14`).
 
 **Tests:**
 
 | Artifact | Layer | Test file |
 |----------|-------|-----------|
-| `WorkerModule` | Unit: compilação; nenhum controller registrado | `src/worker/worker.module.spec.ts` |
+| `WorkerModule` | Integration (Postgres + Redis reais): compilação; nenhum controller registrado | `src/worker/worker.module.integration-spec.ts` |
 
 **Dependencies:** SI-03.4 (entidade `Video`), SI-03.5 (`StorageModule`), SI-03.6 (`QueueModule`)
 
@@ -513,6 +516,7 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 
 - `docker compose up -d video-worker` sobe o worker, os logs mostram o contexto Nest inicializado e o container não abre nenhuma porta HTTP.
 - `docker compose stop video-worker` encerra o processo de forma limpa (shutdown hooks), sem ser morto por timeout.
+- Num ambiente recriado (`docker compose down -v && docker compose up -d`), depois de `npm install` + `migration:run`, o `video-worker` fica `running` sozinho (restart policy) ou após `docker compose restart video-worker`, sem ficar `Exited`.
 - A API continua subindo com os mesmos parâmetros de conexão: `GET /` retorna `200` e as suítes existentes seguem verdes.
 
 ---
@@ -615,7 +619,7 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 **Technical actions:**
 
 1. Criar `test/helpers/video-pipeline.ts`: sobe o app HTTP (mesma configuração dos e2e existentes) **e** o `WorkerModule` no mesmo processo; helpers `uploadViaPresignedParts(initiateBody, filePath, { stopAfterPart? })` (PUT com `fetch` nas URLs de parte) e `waitForStatus(app, token, videoId, status, timeoutMs)` com polling em `GET /videos/:id` (per `phase-03-videos/TD-14`).
-2. Em `beforeAll`, gerar com ffmpeg em `os.tmpdir()` um vídeo de ~11 MiB (`testsrc` + ruído, bitrate alto), que vira 3 partes de 5 MiB abaixo do teto de teste de 12 MiB; em `afterAll`, `obliterateTestQueues`, fechar worker e app, `cleanAllTables` e remover o arquivo, sem open handles.
+2. Em `beforeAll`, gerar com ffmpeg em `os.tmpdir()` um vídeo de tamanho determinístico entre 10 e 12 MiB (`testsrc` + ruído com bitrate fixo e `-fs` limitando o arquivo), que vira 3 partes de 5 MiB abaixo do teto de teste de 12 MiB; o `sizeBytes` do initiate vem sempre do tamanho real do arquivo (`fs.statSync`); em `afterAll`, `obliterateTestQueues`, fechar worker e app, `cleanAllTables` e remover o arquivo, sem open handles.
 3. Criar `test/videos-pipeline.e2e-spec.ts` com os fluxos: (a) upload de 3 partes com pausa após a parte 1 e retomada via `part-urls` → `complete` `202` → `ready` com metadados e thumbnail; (b) playback com `Range` → `206` e download com `Content-Disposition: attachment`; (c) `not-a-video.mp4` → `failed`/`INVALID_MEDIA`; (d) dois uploads geram `publicId`s distintos.
 
 **Tests:**
@@ -643,10 +647,11 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 
 **Technical actions:**
 
-1. `CLAUDE.md` da raiz: em "Docker Networking", registrar a exceção `S3_PUBLIC_ENDPOINT=http://minio.localhost:9000` com o texto de `### Configuration & Infrastructure` (alias de rede do serviço de storage resolvido pelo DNS do Docker, único host `*.localhost` permitido; `DB_HOST`, `REDIS_HOST` e `S3_ENDPOINT` seguem com o nome do serviço) (per `phase-03-videos/TD-16`); em "Architecture", Message Queue deixa de ser "TBD" e passa a BullMQ sobre Redis (per `phase-03-videos/TD-01`), e Object Storage passa a MinIO (per `phase-03-videos/TD-08`).
-2. `nestjs-project/CLAUDE.md`: serviços `redis`, `minio`, `minio-init` e `video-worker`; probes de startup (`docker compose exec redis redis-cli ping` e readiness do MinIO); `docker compose build` obrigatório após mudar o `Dockerfile.dev`; entrypoint e logs do worker (`npm run start:worker`, `docker compose logs -f video-worker`); `test:e2e` agora com `--runInBand` de fato; isolamento de teste via `src/test/setup-test-env.ts` (prefixo `test`, buckets `-test`) (per `phase-03-videos/TD-02`, `phase-03-videos/TD-14`).
+1. `CLAUDE.md` da raiz (a exceção `minio.localhost` já entrou no SI-03.2): em "Repository Structure", corrigir `next-frontend/` — "not yet initialized" é falso, o diretório existe com as Fases 01/02 do front; em "Architecture", Message Queue deixa de ser "TBD" e passa a BullMQ sobre Redis (per `phase-03-videos/TD-01`), Object Storage passa a MinIO (per `phase-03-videos/TD-08`) e o Video Worker roda como container próprio a partir do mesmo código (per `phase-03-videos/TD-02`).
+2. `nestjs-project/CLAUDE.md`: nova seção **"Vídeos"** (módulo e arquivos principais, tabela dos 7 endpoints com método, rota e auth, fluxo upload multipart → `complete` → fila → worker → status, buckets e chaves, mapeamento de status "rascunho → processando → pronto/erro" do `phase-03-videos/TD-12` Note); serviços `mailpit` (hoje ausente da lista), `redis`, `minio`, `minio-init` e `video-worker`, com a exceção explícita de que o `video-worker` sobe junto com o ambiente e a ordem `up -d` → `npm install` → `migration:run` → `restart video-worker`; probes de startup (`docker compose exec redis redis-cli ping` e readiness do MinIO, nunca curl em `*.localhost` de dentro de container); `docker compose build` obrigatório após mudar o `Dockerfile.dev`; entrypoint e logs do worker (`npm run start:worker`, `docker compose logs -f video-worker`); `test:e2e` agora com `--runInBand` de fato; isolamento de teste via `src/test/setup-test-env.ts` (prefixo `test`, buckets `-test`) (per `phase-03-videos/TD-02`, `phase-03-videos/TD-14`).
 3. Regenerar `nestjs-project/openapi.json` com `docker compose exec nestjs-api npm run openapi:export` e versionar o diff (inherited `openapi-docs-nestjs/TD-02`).
-4. Estender `src/openapi-export.integration-spec.ts`: as 7 operações de vídeo presentes com tag `videos` e `summary` não vazio, segurança `access-token` nas rotas JWT e nas `@OptionalAuth()`, e respostas de erro referenciando `ApiErrorEnvelope` (inherited `openapi-docs-nestjs/TD-01`).
+4. Atualizar `docs/diagrams/software-arch.mermaid`: Message Queue sem "TBD" (BullMQ/Redis), Video Worker como container a partir do mesmo código e as relações de storage conforme `phase-03-videos/TD-05`/`TD-10` (browser ↔ storage por URLs pré-assinadas).
+5. Estender `src/openapi-export.integration-spec.ts`: as 7 operações de vídeo presentes com tag `videos` e `summary` não vazio, segurança `access-token` nas rotas JWT e nas `@OptionalAuth()`, e respostas de erro referenciando `ApiErrorEnvelope` (inherited `openapi-docs-nestjs/TD-01`).
 
 **Tests:**
 
@@ -660,7 +665,8 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 
 - O `openapi.json` versionado lista as 7 operações de vídeo sob a tag `videos`, cada uma com `summary` e respostas de erro tipadas por `ApiErrorEnvelope`.
 - No `openapi.json`, `GET /videos/{publicId}/playback` e `GET /videos/{publicId}/download` declaram a segurança `access-token` e "authentication optional" na descrição.
-- O `CLAUDE.md` da raiz documenta `S3_PUBLIC_ENDPOINT` como a única exceção `*.localhost` e não mostra mais "Message Queue (TBD)".
+- O `CLAUDE.md` da raiz não mostra mais "Message Queue (TBD)" nem afirma que o `next-frontend/` não foi inicializado; o diagrama `software-arch.mermaid` também não tem mais "TBD".
+- O `nestjs-project/CLAUDE.md` tem a seção "Vídeos" com os 7 endpoints e o mapeamento de status, e cada arquivo, comando e endpoint citado existe no código.
 - Seguindo só o `nestjs-project/CLAUDE.md`, um dev reconstrói a imagem, sobe o ambiente, valida `redis`, `minio` e `video-worker` pelas probes listadas e roda os comandos do DoD sem passos extras.
 
 ---
@@ -679,6 +685,7 @@ Entity file: `src/videos/entities/video.entity.ts`, table `videos`.
 |--------|------|-------------|-------|
 | id | uuid | PK | Generated in the app (`crypto.randomUUID()`) **before** insert, because the storage key and the multipart upload need it before the row exists. Wire: `id` / `videoId` |
 | public_id | varchar(11) | unique, not null | `randomBytes(8).toString('base64url')` (11 chars, 64 random bits), with a retry on unique violation (max 5 attempts, same `QueryFailedError` code `23505` + column detail check as `ChannelsService`) (per `phase-03-videos/TD-09`). Wire: `publicId` |
+| title | varchar(255) | not null | Video title. Optional on initiate; defaults to `fileName` without its extension (the whole `fileName` when that is empty). Required by the challenge's "Persistência" minimum fields; editing is Phase 04 (per `phase-03-videos/TD-05` Note). Wire: `title` |
 | channel_id | uuid | FK → `channels.id`, not null | Ownership anchor (per `phase-03-videos/TD-15`). Resolved from the JWT `sub` through `channels.user_id` on writes |
 | processing_status | enum `videos_processing_status_enum` | not null, default `'uploading'`, values `'uploading'`, `'processing'`, `'ready'`, `'failed'` | Technical lifecycle (per `phase-03-videos/TD-12`). Wire: `processingStatus` |
 | publication_status | enum `videos_publication_status_enum` | not null, default `'draft'`, values `'draft'` | Publication axis, kept separate from processing (per `phase-03-videos/TD-12`). `draft` is the only value in Phase 03. Phase 04 adds `published`/visibility via `ALTER TYPE … ADD VALUE`. Wire: `publicationStatus` |
@@ -705,12 +712,14 @@ Entity file: `src/videos/entities/video.entity.ts`, table `videos`.
 
 **State machine (`processing_status`):** `uploading → processing → ready`; `uploading → failed` (abort, sweep, size mismatch on complete); `processing → failed` (invalid media, retries exhausted). `ready` and `failed` are terminal in Phase 03. Re-running the job for a video that is already `ready` overwrites metadata and the thumbnail (idempotent worker, per `phase-03-videos/TD-12`).
 
+**Mapping to the challenge's status cycle** ("rascunho → processando → pronto/erro", per `phase-03-videos/TD-12` Note): rascunho = `publication_status = 'draft'` + `processing_status = 'uploading'`; processando = `processing`; pronto = `ready`; erro = `failed` (+ `failure_reason`). `publication_status` stays `draft` for the whole phase.
+
 **Registration & migration:**
 - `TypeOrmModule.forFeature([Video])` in `VideosModule` (API) and in `WorkerModule` (worker). Both roots use `autoLoadEntities: true`, built from the single `databaseConfig` factory (inherited convention: never duplicate connection params, so the TypeORM options builder is shared between `AppModule` and `WorkerModule`).
 - Migration `CreateVideos` generated by the CLI inside the container (`npm run migration:generate -- src/database/migrations/CreateVideos`, because the `data-source.ts` entity glob already picks up `*.entity.ts`), then reviewed for both enum types, the FK and the three indexes.
 - Test fallout that must land with the migration: `src/database/migrations.integration-spec.ts` (`MANAGED_TABLES` + `videos`, `MANAGED_ENUM_TYPES` + both new enum types, expected migration count 3), `cleanAllTables` (delete `videos` before `channels`), and every `ALL_ENTITIES` list in module specs.
 
-**Out of this phase:** title, description, visibility and custom thumbnails (Phase 04).
+**Out of this phase:** editing the title, description, visibility and custom thumbnails (Phase 04).
 
 ### API Contracts
 
@@ -725,6 +734,7 @@ Entity file: `src/videos/entities/video.entity.ts`, table `videos`.
 **Shared response shape — `VideoResponse`** (used by `GET /videos/:id` and `POST /videos/:id/upload/complete`):
 - id: string (uuid)
 - publicId: string (11 chars, base64url)
+- title: string
 - processingStatus: `'uploading' | 'processing' | 'ready' | 'failed'`
 - publicationStatus: `'draft'`
 - failureReason: string | null
@@ -756,6 +766,7 @@ Initiate upload: pre-registers the video as a draft and opens the multipart uplo
 
 **Request body:**
 - fileName: string, required — 1–255 characters
+- title: string, optional — trimmed, 1–255 characters. When omitted, defaults to `fileName` without its extension (the whole `fileName` when that is empty)
 - sizeBytes: integer, required — ≥ 1 (the upper bound is a domain check, not a DTO rule, so it returns `VIDEO_TOO_LARGE`)
 - mimeType: string, required — max 127, matches `^video\/[\w.+-]+$`
 
@@ -948,6 +959,7 @@ Response header `Cache-Control: no-store`.
 #### Validation Rules — video endpoints
 
 - `fileName`: required string, trimmed, 1–255 characters
+- `title`: optional string, trimmed, 1–255 characters (default derived from `fileName` in the service)
 - `sizeBytes`: required integer, ≥ 1 (`@IsInt`, `@Min(1)`; the max is checked in the domain → `VIDEO_TOO_LARGE`)
 - `mimeType`: required string, max 127, `^video\/[\w.+-]+$`
 - `partNumbers`: optional array, `@ArrayMinSize(1)`, `@ArrayMaxSize(100)`, `@ArrayUnique()`, each `@IsInt` `@Min(1)`. The upper bound (`partCount`) is checked in the domain → `INVALID_PART_NUMBER`
@@ -1127,13 +1139,13 @@ Tests reuse the production code path with small values, e.g. `VIDEO_MAX_UPLOAD_B
 - `Dockerfile.dev`: `apt install -y … ffmpeg` (provides `ffprobe`). Shared by `nestjs-api` and `video-worker`, so it needs a one-time `docker compose build`.
 - `redis`: `redis:8-alpine`, `redis-server --maxmemory-policy noeviction`, port `6379`, healthcheck `redis-cli ping`.
 - `minio`: `cgr.dev/chainguard/minio@sha256:<digest>` (digest pinned at implementation), `server /data --address :9000 --console-address :9001`, `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` equal to `S3_ACCESS_KEY`/`S3_SECRET_KEY`, ports `9000:9000` (same port inside and out) + `9001:9001`, named volume, network alias **`minio.localhost`**, readiness healthcheck (probe command validated against the pinned image).
-- `minio-init`: one-shot `cgr.dev/chainguard/minio-client@sha256:<digest>` that creates `videos`, `thumbnails` and the test buckets idempotently, sets anonymous download on the thumbnails buckets, and configures CORS exposing `ETag` for browser PUT/GET (mechanism verified against the pinned image). Depends on `minio` healthy.
-- `video-worker`: same build/volume as `nestjs-api`, `command` runs the worker entrypoint, `depends_on` `db`/`redis`/`minio` healthy + `minio-init` completed successfully.
+- `minio-init`: one-shot service from the **`cgr.dev/chainguard/minio` image** (same digest as `minio`; the `minio-client` image has no `sh`), `entrypoint: ["sh", "-c"]` running an idempotent script: `mc alias set`, `mc mb -p` for `videos`, `thumbnails`, `videos-test`, `thumbnails-test`, and `mc anonymous set download` on both thumbnails buckets. **No bucket CORS**: `mc cors set` is not implemented on this MinIO build, and MinIO's default CORS already exposes `ETag` (per `phase-03-videos/TD-08` Note). Depends on `minio` healthy.
+- `video-worker`: same build/volume as `nestjs-api`, `command` runs the worker entrypoint, `restart: unless-stopped`, `depends_on` `db`/`redis`/`minio` healthy + `minio-init` completed successfully. On a fresh clone it starts before `node_modules`, `.env` and the migrations exist, so the documented order is `up -d` → `npm install` → `migration:run` → `docker compose restart video-worker`. It is the one application process that starts with the environment (queue consumer = infrastructure), an explicit carve-out to the `nestjs-project/CLAUDE.md` "never start the app" rule.
 - `nestjs-api`: `depends_on` gains `redis`, `minio` (healthy) and `minio-init` (completed successfully). DoD commands stay unchanged (`docker compose exec nestjs-api …`).
 
-**Docker Networking exception to record in root `CLAUDE.md`** (per `phase-03-videos/TD-16`): `S3_PUBLIC_ENDPOINT` is the one key allowed a `*.localhost` host (`http://minio.localhost:9000`). Inside containers it is a Compose network alias of the storage service, resolved by Docker DNS to that service and never to the container's own loopback, so the rule's intent (never point a container at itself) holds. It exists only because presigned URLs must be signed for a host that is also valid in the browser. Every other host key (`DB_HOST`, `REDIS_HOST`, `S3_ENDPOINT`) keeps the service name.
+**Docker Networking exception to record in root `CLAUDE.md`** (per `phase-03-videos/TD-16`): `S3_PUBLIC_ENDPOINT` is the one key allowed a `*.localhost` host (`http://minio.localhost:9000`). Inside containers it is a Compose network alias of the storage service, resolved by Docker DNS to that service and never to the container's own loopback, so the rule's intent (never point a container at itself) holds. It exists only because presigned URLs must be signed for a host that is also valid in the browser. Every other host key (`DB_HOST`, `REDIS_HOST`, `S3_ENDPOINT`) keeps the service name. curl hard-codes `*.localhost` to loopback even inside containers, so in-container probes of this host use Node `fetch` (or `mc ready` in the `minio` service), never curl (per `phase-03-videos/TD-16` Note). This exception is recorded in SI-03.2, together with the service that introduces it.
 
-**Other doc/test fallout to cover in SIs:** `nestjs-project/CLAUDE.md` (services list, `redis-cli ping` + MinIO readiness probes, rebuild after `Dockerfile.dev` changes, worker entrypoint), and `test:e2e` in `package.json` gaining `--runInBand` (CLAUDE.md claims it is already configured, but the script lacks it).
+**Other doc/test fallout to cover in SIs:** `nestjs-project/CLAUDE.md` (services list, `redis-cli ping` + MinIO readiness probes, rebuild after `Dockerfile.dev` changes, worker entrypoint), and both `test` and `test:e2e` in `package.json` gaining `--runInBand` (CLAUDE.md claims e2e is already configured, but the script lacks it; the new integration suites share the `test` queue and `-test` buckets).
 
 ---
 

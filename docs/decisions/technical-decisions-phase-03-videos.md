@@ -169,6 +169,8 @@ _Subprojects in scope:_
 **Recommendation:** **Option A (S3 multipart with presigned part URLs, API-orchestrated)**. It is the only option where no service other than the object store touches video bytes, and resumability comes from `ListParts`. The draft-on-initiate and enqueue-on-complete hooks are plain API endpoints that follow the existing JWT/envelope conventions. tus (B) buys finer-grained resume at the price of an extra data-path service and a hook contract. Note on the strict-BFF rule: the browser talks to **storage** (presigned URLs), never to the Nest API, which is the carve-out `next-frontend-config-base/TD-03` already anticipated.
 
 **Decision:** A (S3 multipart with presigned part URLs, API-orchestrated)
+
+**Note:** Pre-implementation review (2026-11-24): the draft row created on initiate also carries a `title`. The challenge's "Persistência" requirement lists title among the minimum video fields. `title` is optional on initiate and defaults to the `fileName` without its extension (or the whole `fileName` when that is empty). Editing it belongs to Phase 04 ("Edição das informações do vídeo").
 **Libraries:** @aws-sdk/client-s3, @aws-sdk/s3-request-presigner
 
 ---
@@ -259,6 +261,10 @@ _Subprojects in scope:_
 **Recommendation:** **Option A (Chainguard MinIO, digest-pinned)**. It is the only option verified to run today that keeps the documented MinIO target, with no build tooling. The application code talks plain S3 (`@aws-sdk/client-s3`, `forcePathStyle`), so moving to B, C or real S3 later is a compose change, not a code change.
 
 **Decision:** A (Chainguard MinIO, digest-pinned)
+
+**Note:** Pre-implementation review (2026-11-24), verified against the cached images:
+- `cgr.dev/chainguard/minio-client` has `mc` as its entrypoint and no `sh`, so it cannot run a multi-step init. `cgr.dev/chainguard/minio` ships both `sh` and `mc`, so the one-shot `minio-init` runs from the `minio` image (same digest) with `sh -c`. `minio-client` is not used.
+- `mc cors set` fails with "not implemented" on this MinIO build, so no per-bucket CORS is configured. MinIO's default CORS already exposes `ETag` (`Access-Control-Expose-Headers`); `MINIO_API_CORS_ALLOW_ORIGIN` remains available if origins ever need narrowing.
 
 ---
 
@@ -392,6 +398,14 @@ _Subprojects in scope:_
 - **Dependency:** valid if TD-01 = A. If TD-01 = B (pg-boss), this mechanism must be re-researched against pg-boss's own scheduling.
 
 **Decision:** B (orthogonal processingStatus + publication, retries, idempotent worker, sweep via BullMQ Job Scheduler)
+
+**Note:** Pre-implementation review (2026-11-24): mapping to the challenge's status cycle "rascunho → processando → pronto/erro":
+- rascunho = `publication_status = 'draft'` + `processing_status = 'uploading'`;
+- processando = `processing`;
+- pronto = `ready`;
+- erro = `failed` (with `failure_reason`).
+
+The video stays `draft` on the publication axis through the whole phase. This mapping must be stated in the Data Model and in the videos section of `nestjs-project/CLAUDE.md`.
 **Libraries:** bullmq, @nestjs/bullmq
 
 ---
@@ -520,6 +534,8 @@ Evidence from a throwaway stack (2026-11-24): MinIO (`cgr.dev/chainguard/minio`)
 **Exception to root `CLAUDE.md` "Docker Networking" (to be recorded there at implementation time):** `S3_PUBLIC_ENDPOINT` is the one key allowed a `*.localhost` host. Inside containers it is a **Compose network alias of the storage service**, resolved by Docker DNS to that service, never to the container's own loopback, so the rule's intent (never point a container at itself) holds. It exists only because presigned URLs must be signed for a host that is also valid in the browser. Every other host key (DB, Redis, `S3_ENDPOINT`) keeps the service name.
 
 **Decision:** A (minio.localhost network alias + same published port)
+
+**Note:** Pre-implementation review (2026-11-24): curl (≥ 7.78) hard-codes `*.localhost` to 127.0.0.1 even **inside** containers, so `curl http://minio.localhost:9000` from `nestjs-api` hits the container itself (connection refused). Node (`fetch`/`dns.lookup`) and `getent` resolve the Docker alias correctly, and so does the app's AWS SDK. In-container checks of this host therefore use `node -e "fetch(...)"` or `mc ready` inside the `minio` service, never curl. From the host, curl works as intended.
 
 ---
 
