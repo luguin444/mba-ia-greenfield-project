@@ -48,6 +48,22 @@ target_file: test/videos-uploads.e2e-spec.ts
     - expect: status `404` com `{ statusCode: 404, error: "CHANNEL_NOT_FOUND", message: "Channel not found for the authenticated user" }`
     - expect: nenhuma linha criada em `videos`
 
+#### 1.3. titulo-padrao-do-filename-e-titulo-informado-com-trim
+
+**Covers AC:** #8
+**Source:** auto
+**Last sync:** 2026-11-25T14:31:44Z
+
+**Steps:**
+  1. POST /videos/uploads com o token do dono e body `{ fileName: "aula-01.mp4", sizeBytes: 11534336, mimeType: "video/mp4" }`, sem `title`
+    - expect: status `201`
+  2. Consultar a linha `videos` com `id = videoId`
+    - expect: `title = 'aula-01'` (o `fileName` sem a extensão)
+  3. POST /videos/uploads com o token do dono e body `{ fileName: "aula-02.mp4", title: "  Minha aula  ", sizeBytes: 11534336, mimeType: "video/mp4" }`
+    - expect: status `201`
+  4. Consultar a linha `videos` com `id = videoId` da segunda resposta
+    - expect: `title = 'Minha aula'` (o informado, após trim)
+
 ### 2. Regras de domínio (tamanho e teto de uploads ativos)
 
 **Setup:** mesmo do grupo 1.
