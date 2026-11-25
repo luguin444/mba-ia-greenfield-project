@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   HttpCode,
   HttpStatus,
   Param,
@@ -166,5 +167,41 @@ export class VideosController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<VideoResponseDto> {
     return this.videosService.completeUpload(id, user.sub);
+  }
+
+  @Delete(':id/upload')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Abort a video upload',
+    description:
+      'Aborts the in-progress multipart upload, discarding the stored parts, and marks the video as failed (UPLOAD_ABORTED). Frees one active-upload slot of the channel.',
+  })
+  @ApiResponse({ status: 204, description: 'Upload aborted' })
+  @ApiResponse({
+    status: 400,
+    description: 'Validation failed (id is not a uuid)',
+    schema: ERROR_SCHEMA,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Missing or invalid access token',
+    schema: ERROR_SCHEMA,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Video not found or not owned by the caller (VIDEO_NOT_FOUND)',
+    schema: ERROR_SCHEMA,
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'The video is not uploading (INVALID_VIDEO_STATE)',
+    schema: ERROR_SCHEMA,
+  })
+  async abortUpload(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<void> {
+    await this.videosService.abortUpload(id, user.sub);
   }
 }

@@ -351,4 +351,41 @@ describe('VideosService (integration, Postgres + MinIO + Redis)', () => {
       expect(row.upload_id).toBe(initiated.uploadId);
     });
   });
+
+  describe('abortUpload', () => {
+    it('should mark the row failed/UPLOAD_ABORTED with a null upload_id and abort the multipart upload in storage', async () => {
+      const { userId } = await createUserWithChannel('owner');
+      const initiated = await service.initiateUpload(userId, initiateDto());
+      await putPart(initiated.parts[0].url, 5 * MIB);
+
+      await service.abortUpload(initiated.videoId, userId);
+
+      const row = await videoRepository.findOneByOrFail({
+        id: initiated.videoId,
+      });
+      expect(row.processing_status).toBe(VideoProcessingStatus.FAILED);
+      expect(row.failure_reason).toBe('UPLOAD_ABORTED');
+      expect(row.upload_id).toBeNull();
+      await expect(
+        storage.listAllParts(row.source_key, initiated.uploadId),
+      ).rejects.toMatchObject({ name: 'NoSuchUpload' });
+    });
+
+    it('should let a channel at the active-upload limit start a new upload right after an abort', async () => {
+      const { userId } = await createUserWithChannel('owner');
+      const initiated: { videoId: string }[] = [];
+      for (let i = 0; i < MAX_ACTIVE_UPLOADS; i++) {
+        initiated.push(await service.initiateUpload(userId, initiateDto()));
+      }
+      await expect(
+        service.initiateUpload(userId, initiateDto()),
+      ).rejects.toBeInstanceOf(ActiveUploadLimitReachedException);
+
+      await service.abortUpload(initiated[0].videoId, userId);
+
+      await expect(
+        service.initiateUpload(userId, initiateDto()),
+      ).resolves.toMatchObject({ partCount: 2 });
+    });
+  });
 });

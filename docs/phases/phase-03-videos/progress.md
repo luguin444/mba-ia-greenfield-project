@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 10/21 completed
+**SIs:** 11/21 completed
 
 ### SI-03.1 — Infra: dependências, namespaces de configuração e variáveis de ambiente
 - **Status:** completed
@@ -106,9 +106,11 @@
   - `toResponse(video)` (`toVideoResponse` + `thumbnailUrl` via `publicObjectUrl` when `thumbnail_key` is set) was added here, because the `202` body is a `VideoResponse`. SI-03.12 reuses it and owns its unit test.
 
 ### SI-03.11 — Endpoint DELETE /videos/:id/upload
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 7 new, passing for the SI: `src/videos/videos.service.integration-spec.ts` +2 (12 total), `test/videos-upload-abort.e2e-spec.ts` 5 (the 5 spec scenarios). Re-run: `src/videos` 80/80
+- **Observations:**
+  - The `failed`/`UPLOAD_ABORTED`/`upload_id = null` transition is a conditional update (`WHERE id AND processing_status = 'uploading'`). 0 affected rows → `INVALID_VIDEO_STATE`, the same guard as `complete`. The plan does not spell this out for abort. It covers a concurrent `complete` that commits between the check and the update. In that case the multipart upload is already completed, the abort is tolerated (`NoSuchUpload`), and the video stays `processing`.
+  - After the abort, MinIO answers the PUT to the old part URL with `404` and an XML body containing `NoSuchUpload`. The e2e asserts both. The integration test checks that `listAllParts` of the aborted upload rejects with `name: 'NoSuchUpload'`. That is the raw S3 error; only `completeMultipartUpload` maps it to a storage error.
 
 ### SI-03.12 — Endpoint GET /videos/:id
 - **Status:** pending

@@ -276,6 +276,29 @@ export class VideosService {
   }
 
   /**
+   * Owner abort: frees the storage space of the parts and the channel's
+   * active-upload slot. An upload already gone from storage is not an error.
+   */
+  async abortUpload(id: string, userId: string): Promise<void> {
+    const video = await this.findOwnedOrFail(id, userId);
+    this.assertUploading(video);
+
+    await this.storageService.abortMultipartUpload(
+      video.source_key,
+      video.upload_id,
+    );
+    const transition = await this.videoRepository.update(
+      { id: video.id, processing_status: VideoProcessingStatus.UPLOADING },
+      {
+        processing_status: VideoProcessingStatus.FAILED,
+        failure_reason: VideoFailureReason.UPLOAD_ABORTED,
+        upload_id: null,
+      },
+    );
+    if (!transition.affected) throw new InvalidVideoStateException();
+  }
+
+  /**
    * Every part in `1..partCount` must be stored with its exact size: `partSize`
    * for all but the last, the remainder for the last (which also pins the
    * sum). S3 would reject parts under 5 MiB with `EntityTooSmall`, a 500.
