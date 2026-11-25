@@ -37,6 +37,10 @@ Inside a container, `localhost` refers to the container itself, not the host mac
 
 This applies to all environment variables, configuration files, and code that references service hosts.
 
+**Single exception: `S3_PUBLIC_ENDPOINT=http://minio.localhost:9000`.** It is the one key allowed a `*.localhost` host. Inside containers, `minio.localhost` is a Compose network alias of the `minio` service. Docker DNS resolves it to that service, never to the container's own loopback, so the intent of the rule (never point a container at itself) still holds. The exception exists only because presigned URLs must be signed for a host that also works in the browser, and the host is part of the signature. Every other host key (`DB_HOST`, `REDIS_HOST`, `S3_ENDPOINT`) keeps the service name.
+
+Do not use curl to test `*.localhost` from inside a container: curl hard-codes `*.localhost` to `127.0.0.1` even there, so it hits the container itself. Use Node instead (`node -e "fetch('http://minio.localhost:9000/minio/health/ready').then(r => console.log(r.status))"`), or `mc ready` inside the `minio` service. From the host, curl works.
+
 ## Working Principles
 
 - **Single Responsibility:** each module, service, and function should have a clear, focused responsibility. Re-evaluate adherence at every step — when a module starts owning logic or entities that are not its own (e.g., a service creating an entity from another domain), extract it immediately into the proper module instead of deferring to a later corrective task.

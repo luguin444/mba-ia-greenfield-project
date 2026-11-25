@@ -12,6 +12,12 @@ services:
         condition: service_healthy
       mailpit:
         condition: service_started
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
 
   db:
     image: postgres:17
@@ -32,5 +38,62 @@ services:
     ports:
       - "1025:1025"
       - "8025:8025"
+
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--maxmemory-policy", "noeviction"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Chainguard build of MinIO (the official images are no longer published), pinned by digest.
+  minio:
+    image: cgr.dev/chainguard/minio@sha256:f6243be11aaaa2fe654d260558e2b3fcef50135e78a3abfd0db802b13444f059
+    command: ["server", "/data", "--address", ":9000", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-streamtube}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-streamtube-secret}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      default:
+        # Lets presigned URLs signed for minio.localhost work both in the browser and inside containers.
+        aliases:
+          - minio.localhost
+    healthcheck:
+      # Probes this container's own MinIO process (readiness endpoint, no credentials needed).
+      test: ["CMD-SHELL", "MC_CONFIG_DIR=/tmp/.mc MC_HOST_self=http://localhost:9000 mc ready self"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-shot, idempotent bucket bootstrap. Uses the minio image (same digest): it ships sh + mc.
+  minio-init:
+    image: cgr.dev/chainguard/minio@sha256:f6243be11aaaa2fe654d260558e2b3fcef50135e78a3abfd0db802b13444f059
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MC_CONFIG_DIR: /tmp/.mc
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-streamtube}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-streamtube-secret}
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        set -e
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"
+        mc mb -p local/videos local/thumbnails local/videos-test local/thumbnails-test
+        mc anonymous set download local/thumbnails
+        mc anonymous set download local/thumbnails-test
+
+volumes:
+  minio-data:
 
 

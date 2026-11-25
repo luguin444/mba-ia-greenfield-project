@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 1/21 completed
+**SIs:** 2/21 completed
 
 ### SI-03.1 — Infra: dependências, namespaces de configuração e variáveis de ambiente
 - **Status:** completed
@@ -14,9 +14,15 @@
   - The AC "`GET /` still returns 200" is covered by `test/app.e2e-spec.ts` in the full e2e run at the end of the block. The API server is not started, per `nestjs-project/CLAUDE.md`.
 
 ### SI-03.2 — Infra: FFmpeg na imagem dev e serviços redis, minio e minio-init no Compose
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** no tests (Infra). Container ACs checked by hand; existing suites green on the new topology: `npm test -- --runInBand` 163/163 (23 suites), `npm run test:e2e -- --runInBand` 52/52 (3 suites)
+- **Observations:**
+  - MinIO pinned to the multi-arch index digest `cgr.dev/chainguard/minio@sha256:f6243be11aaaa2fe654d260558e2b3fcef50135e78a3abfd0db802b13444f059` (`RELEASE.2026-11-23T00-10-37Z`, resolved 2026-11-25). `minio-init` uses the same digest.
+  - The pinned image ships `sh` and `mc` but no curl/wget. Healthcheck: `MC_CONFIG_DIR=/tmp/.mc MC_HOST_self=http://localhost:9000 mc ready self`. It probes the container's own MinIO process; no service-to-service `localhost`. `MC_CONFIG_DIR=/tmp/.mc` because the nonroot user (65532) has no writable default config dir.
+  - ACs verified: `redis` and `minio` healthy; `minio-init` exit 0 on the first run and on a forced re-run (`mc mb -p` is idempotent); `ffprobe`/`ffmpeg` 5.1.9 exit 0 in `nestjs-api`; `redis-cli ping` → `PONG`, `maxmemory-policy` = `noeviction`; Node `fetch('http://minio.localhost:9000/minio/health/ready')` from `nestjs-api` → 200; host curl to the same URL → 200; anonymous GET on a `thumbnails` object → 200, on a `videos` object → 403 (probe objects removed afterwards); GET with `Origin` → `Access-Control-Expose-Headers` includes `Etag`.
+  - The "no `.env`" AC was checked with `docker compose --env-file /dev/null config`: MinIO credentials fall back to the `.env.example` defaults, and `minio-init` interpolates the same values. A second stack was not started, because its ports would clash with the running one.
+  - The host has its own native `redis-server` on `127.0.0.1:6379`. Publishing the container's `6379:6379` still worked, and containers reach Redis via the `redis` service name. From the host, `localhost:6379` may hit the native Redis instead of the container.
+  - `redis:8-alpine` is kept as a tag, per the plan. Only the Chainguard images are digest-pinned.
 
 ### SI-03.3 — Infra: isolamento do ambiente de teste e `--runInBand` no `test:e2e`
 - **Status:** pending
