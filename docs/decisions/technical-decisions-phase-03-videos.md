@@ -53,6 +53,8 @@ _Subprojects in scope:_
 **Recommendation:** **Option A (BullMQ + Redis)**. It is the only option where retries, exponential backoff, `jobId` dedup and failed-job inspection come from the official Nest integration without custom plumbing, and it matches the diagram's separate queue container. The real cost is the non-transactional enqueue: it is covered by an idempotent `jobId = videoId` plus a periodic reconciliation (TD-12). pg-boss (B) is the honest runner-up if the team prefers zero new infrastructure and transactional enqueue over Nest-native ergonomics.
 
 **Decision:** A (BullMQ + Redis via @nestjs/bullmq)
+
+**Note:** Pre-implementation review (2026-11-24): in `bullmq@6.7.10`, `ioredis` is an **optional** peer dependency (`npm view bullmq@6.7.10 peerDependenciesMeta`), so npm does not install it and BullMQ fails with "could not load the optional 'ioredis' package". `ioredis` is pinned explicitly alongside `bullmq` (see `library-refs.md`). By design, producers' `add` waits while Redis is unreachable (bullmq docs, "Failing fast when Redis is down"). The API bounds the post-commit enqueue with a timeout instead of `enableOfflineQueue: false`, because the connection is shared with the worker.
 **Libraries:** bullmq, @nestjs/bullmq
 
 ---

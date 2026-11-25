@@ -4,6 +4,10 @@ libs:
     version: "^6.7.10"
     context7_id: "/taskforcesh/bullmq/v6.5.3"
     fetched_at: "2026-11-24T21:09:40-03:00"
+  "ioredis":
+    version: "^6.1.0"
+    context7_id: "/redis/ioredis/v6.0.0"
+    fetched_at: "2026-11-24T23:40:00-03:00"
   "@nestjs/bullmq":
     version: "^12.0.2"
     context7_id: "/nestjs/bull"
@@ -34,6 +38,14 @@ Versions: `bullmq`, `@nestjs/bullmq`, `@aws-sdk/client-s3` and `@aws-sdk/s3-requ
 - `@aws-sdk/*` docs come from context7 v3.1153.0, the nearest indexed version to 3.1177.0. Same v3 line; the APIs used here (`S3Client`, multipart commands, `getSignedUrl`) are stable across these minors.
 - `@nestjs/throttler` docs come from v6.7.1, while 6.5.0 is installed. Phase 03 uses only `@SkipThrottle()`, which behaves the same in both.
 - `@nestjs/bullmq` has no versioned context7 index (`/nestjs/bull` repo docs). Cross-check with the NestJS v11 queues technique (`/nestjs/docs.nestjs.com`, `techniques/queues`). `@nestjs/bullmq@12.0.2` peers `@nestjs/core ^10||^11||^12` and `bullmq ^3–^6` (per the decisions doc's Sources section).
+
+## ioredis
+
+Used by: `phase-03-videos/TD-01` (Redis driver required by bullmq 6; Note on TD-01). Added at the pre-implementation review: `bullmq@6.7.10` declares `ioredis` as an **optional** peer (`peerDependenciesMeta.ioredis.optional: true`), so it must be installed explicitly. bullmq's own dev pin is `6.0.0`; npm `latest` is `6.1.0` (2026-11-24); context7 indexes v6.0.0 (same major).
+
+- Never instantiate `ioredis` directly in Phase 03: pass plain connection options (`{ host, port }`) to `BullModule.forRootAsync` and let BullMQ create the clients.
+- Workers: BullMQ forces `maxRetriesPerRequest: null` on worker connections. Do not override it (bullmq docs, "going-to-production").
+- Producers: with Redis down, `queue.add` waits for reconnection instead of failing. Bound it with a timeout in the request path (see the plan, `complete` step 7).
 
 ## bullmq
 

@@ -55,7 +55,7 @@ target_file: test/videos-upload-complete.e2e-spec.ts
 
 **Steps:**
   1. Dono inicia upload de `sizeBytes: 1048576` (1 parte) e faz PUT de 1 MiB na parte 1
-  2. Simular o Redis indisponível: `jest.spyOn(queue, 'add').mockRejectedValueOnce(new Error('connect ECONNREFUSED'))` e `jest.spyOn(Logger.prototype, 'error')`
+  2. Simular o Redis indisponível: `jest.spyOn(queue, 'add').mockRejectedValueOnce(new Error('connect ECONNREFUSED'))` e `jest.spyOn(Logger.prototype, 'error')`. Repetir o cenário com `mockImplementationOnce(() => new Promise(() => {}))` (Redis que não responde: o `add` real fica pendente) e exigir a resposta em até 5 s, coberta pelo timeout de 3 s do enqueue
   3. POST /videos/:id/upload/complete com o token do dono
     - expect: status `202` com `processingStatus: "processing"`
     - expect: a linha do vídeo está `processing` com `upload_id` nulo (estado commitado, re-enfileirável pela varredura)

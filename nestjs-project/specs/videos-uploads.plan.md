@@ -113,7 +113,7 @@ target_file: test/videos-uploads.e2e-spec.ts
 **Steps:**
   1. POST /videos/uploads com body válido e sem header `Authorization`
     - expect: status `401`
-  2. POST /videos/uploads com `Authorization: Bearer <token do dono assinado com o mesmo segredo e exp no passado>`
+  2. POST /videos/uploads com `Authorization: Bearer <token do dono expirado, criado com `jwtService.sign(payload, { expiresIn: -60 })`, nunca com `exp` no payload>`
     - expect: status `401`
   3. Contar as linhas de `videos`
     - expect: nenhuma linha criada
