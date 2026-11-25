@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 5/21 completed
+**SIs:** 6/21 completed
 
 ### SI-03.1 — Infra: dependências, namespaces de configuração e variáveis de ambiente
 - **Status:** completed
@@ -55,9 +55,13 @@
   - Note for SI-03.8/03.14: `createMultipartUpload(key)` follows the plan's signature, which sends no `ContentType`. The source object is stored with MinIO's default type, and the presigned GET for playback returns that type, not `video/*`. If the browser player needs it, pass `mime_type` at initiate (a decision for the leader; not changed here).
 
 ### SI-03.6 — Módulo de fila (BullMQ) compartilhado entre API e worker
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 5 passing (`src/queue/queue.module.integration-spec.ts`, real Redis). With `QueueModule` in `AppModule`: full e2e `npm run test:e2e` 52/52 (3 suites) and full `npm test` 189/189 (28 suites), with no "did not exit"/open-handle warning; `tsc --noEmit` 0
+- **Observations:**
+  - bullmq 6 API: `Queue.client` is `undefined` at runtime. The raw Redis client now lives on the backend (`queue.getBackend().client`, typed `IRedisClient`, which has no `exists`). The AC test reads the job hash with `hget('<prefix>:video-processing:<jobId>', 'name')`: `process-video` under `test:` and `null` under `bull:`. Relevant if a later SI needs the raw client (the sweep in SI-03.19 only uses `getJob`, which stays the same).
+  - `obliterateTestQueues(moduleRef)` throws if a queue's prefix is not `TEST_ENV_OVERRIDES.QUEUE_PREFIX` (`test`), so it can never wipe the containers' `bull:*` queues. It obliterates (`force: true`) and closes the two queues. Workers (from SI-03.16 on) are closed by Nest's own shutdown when the caller closes the module/app.
+  - Existing e2e suites need no change: every one already calls `app.close()`, and `@nestjs/bullmq` closes the queues in `onApplicationShutdown`. They never enqueue, so they do not need `obliterateTestQueues`. After the runs, Redis had no `test:*` keys and no `bull:video-processing:*` keys.
+  - `BullModule.forRootAsync` has no `imports: [ConfigModule]`. It relies on the global `ConfigModule` (`AppModule`, and later `WorkerModule`), per `.claude/rules/nestjs-testing.md`.
 
 ### SI-03.7 — Fundações do domínio de vídeos (exceções, `publicId`, resposta e lookup de canal)
 - **Status:** pending

@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module';
 import { configLoad } from './config/config-load';
 import databaseConfig from './config/database.config';
 import { envValidationSchema } from './config/env.validation';
+import { QueueModule } from './queue/queue.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { envValidationSchema } from './config/env.validation';
         synchronize: false,
       }),
     }),
+    QueueModule,
     AuthModule,
   ],
   controllers: [AppController],
