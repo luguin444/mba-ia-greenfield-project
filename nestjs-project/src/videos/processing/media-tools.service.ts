@@ -85,11 +85,23 @@ function classifyFailure(
       `${command} was killed (${error.signal ?? 'no signal'}) after the ${MEDIA_TOOL_TIMEOUT_MS} ms timeout`,
     );
   }
-  const detail = stderr.trim() || error.message;
+  const detail = redactUrlQueries(stderr.trim() || error.message);
   if (INVALID_MEDIA_STDERR_MARKERS.some((marker) => stderr.includes(marker))) {
     return new InvalidMediaError(`${command} cannot read the input: ${detail}`);
   }
   return new MediaToolTransientError(
     `${command} failed (exit ${String(error.code)}): ${detail}`,
+  );
+}
+
+/**
+ * The input is a presigned URL, and ffprobe/ffmpeg echo it in stderr (as does
+ * `execFile` in `error.message`). Its query string carries the signature, and
+ * these messages reach the worker log and the job's `failedReason` in Redis.
+ */
+function redactUrlQueries(text: string): string {
+  return text.replace(
+    /(https?:\/\/[^\s?]+)\?\S*?(?=:\s|\s|$)/g,
+    '$1?<redacted>',
   );
 }

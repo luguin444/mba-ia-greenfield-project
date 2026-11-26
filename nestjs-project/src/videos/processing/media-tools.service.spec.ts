@@ -120,6 +120,37 @@ describe('MediaToolsService', () => {
         MediaToolTransientError,
       );
     });
+
+    it('should redact the presigned URL query string from invalid-media errors', async () => {
+      const signedUrl =
+        'http://minio:9000/videos/abc/source?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=deadbeef&x-id=GetObject';
+      nextRun(
+        { code: 1 },
+        '',
+        `${signedUrl}: Invalid data found when processing input`,
+      );
+
+      const error = await service.probe(signedUrl).catch((e: Error) => e);
+
+      expect(error).toBeInstanceOf(InvalidMediaError);
+      expect((error as Error).message).toBe(
+        'ffprobe cannot read the input: http://minio:9000/videos/abc/source?<redacted>: Invalid data found when processing input',
+      );
+    });
+
+    it('should redact the presigned URL query string when only error.message names the input', async () => {
+      const signedUrl =
+        'http://minio:9000/videos/abc/source?X-Amz-Signature=deadbeef';
+      nextRun({ code: 1, message: `Command failed: ffprobe -i ${signedUrl}` });
+
+      const error = await service.probe(signedUrl).catch((e: Error) => e);
+
+      expect(error).toBeInstanceOf(MediaToolTransientError);
+      expect((error as Error).message).not.toContain('X-Amz-Signature');
+      expect((error as Error).message).toContain(
+        'http://minio:9000/videos/abc/source?<redacted>',
+      );
+    });
   });
 
   describe('extractFrame', () => {
