@@ -8,22 +8,22 @@ More info in the project overview: [docs/project-plan.md](docs/project-plan.md)
 
 ## Repository Structure
 
-This is a monorepo with two main areas:
+This is a monorepo with three main areas:
 
 - `nestjs-project/` — Backend API (NestJS 11, TypeScript, Express). Contains modules for users, channels, videos, comments, etc.
 - `docs/` — Project documentation, architecture diagrams, and planning.
-- `next-frontend/` (Next.js) — not yet initialized
+- `next-frontend/` — Frontend (Next.js, App Router) with its own `CLAUDE.md` and Compose file. It holds the auth screens of Phases 01/02 and the BFF route handlers in `next-frontend/app/api/`.
 
 ## Architecture (C4 Container Diagram)
 
 See `docs/diagrams/software-arch.mermaid` for the full diagram. Key containers:
 
-- **Frontend** (Next.js) → calls API via REST, streams from Object Storage
-- **API** (Nest.js) → business rules, auth, reads/writes DB, uploads to storage, publishes jobs to queue, sends emails
-- **Video Worker** (FFmpeg) → consumes jobs from queue, processes videos, updates DB and storage
+- **Frontend** (Next.js) → calls API via REST; uploads video parts and streams/downloads straight from Object Storage through presigned URLs
+- **API** (Nest.js) → business rules, auth, reads/writes DB, opens/completes multipart uploads and signs storage URLs, publishes jobs to queue, sends emails
+- **Video Worker** (Nest.js + FFmpeg) → its own container (`video-worker`) built from the same `nestjs-project` code (entrypoint `src/worker.ts`); consumes jobs from queue, extracts metadata and a thumbnail, updates DB and storage
 - **Database** (PostgreSQL) → users, channels, videos, comments, likes
-- **Object Storage** (S3/MinIO) → video files and thumbnails
-- **Message Queue** (TBD) → video processing job queue
+- **Object Storage** (S3-compatible; MinIO in the local Compose) → video files and thumbnails
+- **Message Queue** (BullMQ on Redis) → video processing jobs and the periodic maintenance sweep
 - **Email Service** (SMTP) → account confirmation and password recovery
 
 ## Docker Networking
@@ -36,6 +36,10 @@ Inside a container, `localhost` refers to the container itself, not the host mac
 - **Wrong:** `DB_HOST=localhost`
 
 This applies to all environment variables, configuration files, and code that references service hosts.
+
+**Single exception: `S3_PUBLIC_ENDPOINT=http://minio.localhost:9000`.** It is the one key allowed a `*.localhost` host. Inside containers, `minio.localhost` is a Compose network alias of the `minio` service. Docker DNS resolves it to that service, never to the container's own loopback, so the intent of the rule (never point a container at itself) still holds. The exception exists only because presigned URLs must be signed for a host that also works in the browser, and the host is part of the signature. Every other host key (`DB_HOST`, `REDIS_HOST`, `S3_ENDPOINT`) keeps the service name.
+
+Do not use curl to test `*.localhost` from inside a container: curl hard-codes `*.localhost` to `127.0.0.1` even there, so it hits the container itself. Use Node instead (`node -e "fetch('http://minio.localhost:9000/minio/health/ready').then(r => console.log(r.status))"`), or `mc ready` inside the `minio` service. From the host, curl works.
 
 ## Working Principles
 

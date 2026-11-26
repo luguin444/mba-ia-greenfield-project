@@ -1,0 +1,2073 @@
+
+❯ <browser_instruction># Claude in Chrome browser automation
+
+  You have access to browser automation tools (mcp__claude-in-chrome__*) for
+  interacting with web pages in Chrome. Follow these guidelines for effective
+  browser automation.
+
+  ## Loading deferred tools
+
+  If the mcp__claude-in-chrome__* tools are deferred (must be loaded via
+  ToolSearch before use), load every tool you expect to need in ONE ToolSearch
+  call — the select query accepts a comma-separated list — never one call per
+  tool. Start with the core set:
+
+  ToolSearch with query
+  "select:mcp__claude-in-chrome__tabs_context_mcp,mcp__claude-in-chrome__naviga
+  te,mcp__claude-in-chrome__computer,mcp__claude-in-chrome__read_page,mcp__clau
+  de-in-chrome__tabs_create_mcp,mcp__claude-in-chrome__tabs_close_mcp"
+
+  Add task-specific tools to the same call when the task obviously needs them:
+  read_console_messages / read_network_requests for debugging, form_input for
+  forms, gif_creator for recordings, javascript_tool for page scripting.
+
+  ## GIF recording
+
+  When performing multi-step browser interactions that the user may want to
+  review or share, use mcp__claude-in-chrome__gif_creator to record them.
+
+  You must ALWAYS:
+  * Capture extra frames before and after taking actions to ensure smooth
+  playback
+  * Name the file meaningfully to help the user identify it later (e.g.,
+  "login_process.gif")
+
+  ## Console log debugging
+
+  You can use mcp__claude-in-chrome__read_console_messages to read console
+  output. Console output may be verbose. If you are looking for specific log
+  entries, use the 'pattern' parameter with a regex-compatible pattern. This
+  filters results efficiently and avoids overwhelming output. For example, use
+  pattern: "[MyApp]" to filter for application-specific logs rather than
+  reading all console output.
+
+  ## Alerts and dialogs
+
+  IMPORTANT: Do not trigger JavaScript alerts, confirms, prompts, or browser
+  modal dialogs through your actions. These browser dialogs block all further
+  browser events and will prevent the extension from receiving any subsequent
+  commands. Instead, when possible, use console.log for debugging and then use
+  the mcp__claude-in-chrome__read_console_messages tool to read those log
+  messages. If a page has dialog-triggering elements:
+  1. Avoid clicking buttons or links that may trigger alerts (e.g., "Delete"
+  buttons with confirmation dialogs)
+  2. If you must interact with such elements, warn the user first that this may
+  interrupt the session
+  3. Use mcp__claude-in-chrome__javascript_tool to check for and dismiss any
+  existing dialogs before proceeding
+
+  If you accidentally trigger a dialog and lose responsiveness, inform the user
+  they need to manually dismiss it in the browser.
+
+  ## Avoid rabbit holes and loops
+
+  When using browser automation tools, stay focused on the specific task. If
+  you encounter any of the following, stop and ask the user for guidance:
+  - Unexpected complexity or tangential browser exploration
+  - Browser tool calls failing or returning errors after 2-3 attempts
+  - No response from the browser extension
+  - Page elements not responding to clicks or input
+  - Pages not loading or timing out
+  - Unable to complete the browser task despite multiple approaches
+
+  Explain what you attempted, what went wrong, and ask how the user would like
+  to proceed. Do not keep retrying the same failing browser action or explore
+  unrelated pages without checking in first.
+
+  ## Tab context and session startup
+
+  IMPORTANT: At the start of each browser automation session, call
+  mcp__claude-in-chrome__tabs_context_mcp first to get information about the
+  user's current browser tabs. Use this context to understand what the user
+  might want to work with before creating new tabs.
+
+  Never reuse tab IDs from a previous/other session. Follow these guidelines:
+  1. Only reuse an existing tab if the user explicitly asks to work with it
+  2. Otherwise, create a new tab with mcp__claude-in-chrome__tabs_create_mcp
+  3. If a tool returns an error indicating the tab doesn't exist or is invalid,
+  call tabs_context_mcp to get fresh tab IDs
+  4. When a tab is closed by the user or a navigation error occurs, call
+  tabs_context_mcp to see what tabs are available</browser_instruction>
+
+❯ Fase 03, branch feature/phase-03-videos, bloco W4.5: implementar SOMENTE
+  SI-03.16 (WorkerModule + entrypoint + serviço video-worker), SI-03.17
+  (wrapper ffprobe/ffmpeg + fixtures), SI-03.18 (consumer process-video) e
+  SI-03.19 (varredura de manutenção). Plano mestre:
+  ~/.claude/plans/tenho-o-seguinte-trabalho-indexed-canyon.md (Etapa 4).
+  W4.1–W4.4 fecharam SI-03.1–03.15.
+
+  ANTES do SI-03.16, um commit pequeno de testes pedido pelo líder (registrar
+  nas Observations do progress.md):
+  - test/videos-download.e2e-spec.ts: no caminho feliz, comparar o
+  Content-Disposition por igualdade total (como já faz
+  videos.service.integration-spec.ts), não só startsWith/toContain.
+  - test/videos-playback.e2e-spec.ts: o 409 do vídeo uploading com toEqual do
+  corpo completo (igual ao caso processing).
+  - test/support/videos-e2e.ts: closeVideosE2eApp com try/finally, para o
+  app.close() rodar mesmo se a limpeza de fila/buckets lançar.
+  - Commit: test(videos): tighten playback/download assertions and e2e
+  teardown.
+
+  Regras:
+  - context7 antes de usar lib (@nestjs/bullmq@11: @Processor + WorkerHost,
+  UnrecoverableError e upsertJobScheduler do bullmq 6). Skills
+  nestjs-best-practices, typeorm e testing-guide-nestjs-project.
+  - Todo npm/test/tsc/lint dentro do container. Nunca localhost entre serviços.
+  Não mockar o que roda no Compose: integração com Postgres, MinIO, Redis e
+  ffprobe/ffmpeg reais (a exceção prevista é o unit do MediaToolsService com
+  execFile mockado).
+  - SI-03.16: o worker não tem HTTP, controller, AuthModule nem throttler;
+  forFeature([Video, Channel, User]); serviço video-worker com restart:
+  unless-stopped, mesma imagem/volume da API e QUEUE_PREFIX de produção (bull).
+  Os testes continuam no prefixo test (setup-test-env), então o container NÃO
+  pode consumir jobs dos testes: confira isso. Depois de subir, docker compose
+  ps com o video-worker estável (sem restart em loop) e o log mostrando o
+  worker conectado.
+  - SI-03.17: execFile sem shell, timeout de 120 s em probe E em extractFrame;
+  fixtures sample-2s.mp4 e not-a-video.mp4 geradas uma vez e versionadas
+  (pequenas).
+  - SI-03.18: erro permanente → markFailed + UnrecoverableError; transitório →
+  rethrow (3 tentativas, backoff exponencial); falha na última tentativa →
+  PROCESSING_ERROR. Linha failed nunca é ressuscitada; reprocessar ready
+  sobrescreve sem erro.
+  - SI-03.19: o scheduler é declarado SÓ no worker (upsertJobScheduler,
+  idempotente em dois bootstraps). Risco residual conhecido: o Postgres é
+  compartilhado entre dev e testes, e a varredura do container (a cada 15 min)
+  poderia pegar uma linha de teste envelhecida artificialmente. Se aparecer
+  teste intermitente por isso, PARE e me traga, sem gambiarra.
+  - Se algo do plano não funcionar como escrito, PARE e me traga antes de
+  improvisar.
+
+  Ritual por SI: implementar → testes do SI verdes → atualizar progress.md →
+  commit local feat(videos): SI-03.N <título curto> (código + progress.md, git
+  add explícito, sem Co-Authored-By, sem push).
+  Ao chegar em "Seguir para SI-03.20?", responda NÃO e pare. Antes de parar:
+  suíte completa (unit+integration e e2e), npx tsc --noEmit e npm run lint,
+  tudo no container; docker compose ps com o video-worker estável; reportar os
+  números.
+  No fim: resumo de 5 linhas (commits, testes, desvios do plano, pendências). O
+  export eu peço separado.
+  /implement phase-03-videos
+
+⏺ I'll start by loading the skills the task names and reading the master plan
+  and memory.
+
+⏺ Skill(nestjs-best-practices)
+  ⎿  Loaded skill
+
+⏺ Skill(testing-guide-nestjs-project)
+  ⎿  Loaded skill
+
+⏺ Skill(typeorm)
+  ⎿  Loaded skill
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+⏺ Bash(sed -n 1,60p ~/.claude/plans/tenho-o-seguinte-trabalho-indexed-canyon.md;
+      sed -n 160,274p
+      ~/.claude/plans/tenho-o-seguinte-trabalho-indexed-canyon.md)
+  ⎿  (No output)
+
+⏺ Skill(implement)
+  ⎿  Loaded skill
+
+⏺ Preflight: branch, working tree, plan structure, and progress.
+
+⏺ Bash(git status --short && git branch --show-current &&
+      P=docs/phases/phase-03-videos/phase-03-videos.md && grep -n "^## " $P &&
+      grep -n "^### SI-" $P && awk '/^---$…)
+  ⎿  (No output)
+
+⏺ Bash(P=docs/phases/phase-03-videos/phase-03-videos.md && sed -n 1,19p $P &&
+      sed -n 497,616p $P && sed -n 1154,1260p $P)
+  ⎿  (No output)
+
+⏺ Bash(P=docs/phases/phase-03-videos/phase-03-videos.md && PLAN_MTIME=$(date -r
+      "$P" +%s); grep -n "^\*\*Test Specs:\*\* see " "$P" | grep -oE '`[^`]+`' |
+      tr -d '`' |…)
+  ⎿  (No output)
+
+⏺ Bash(P=docs/phases/phase-03-videos/phase-03-videos.md && sed -n 682,725p $P;
+      sed -n 1000,1153p $P)
+  ⎿  (No output)
+
+⏺ Now the leader's test-tightening commit first. Let me look at the three test
+  files.
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project/nestjs-project && cat test/support/videos-e2e.ts; grep -n
+      "Content-Dispositi…)
+  ⎿  (No output)
+
+⏺ Bash(sed -n 435,455p src/videos/videos.service.integration-spec.ts; sed -n
+      80,100p test/videos-download.e2e-spec.ts; sed -n 130,170p
+      test/videos-playback.e2e-spec.ts)
+  ⎿  (No output)
+  ⎿  Loaded CLAUDE.md
+  ⎿  Loaded ../.claude/rules/typescript-strict.md
+  ⎿  Loaded ../.claude/rules/nestjs-testing.md
+  ⎿  Loaded ../.claude/rules/nestjs-common-conventions.md
+
+⏺ Applying the three test tightenings.
+
+⏺ Update(nestjs-project/test/videos-download.e2e-spec.ts)
+  ⎿  Added 3 lines, removed 3 lines
+      88      const file = await fetch(body.url);
+      89      expect(file.status).toBe(200);
+      90      const disposition = file.headers.get('content-disposition')
+           ?? '';
+      91 -    expect(disposition.startsWith('attachment;')).toBe(true);  
+      92 -    expect(disposition).toContain('filename="meu-video.mp4"'); 
+      93 -    expect(disposition).toContain("filename*=UTF-8''meu-video.m
+         -p4");                                                          
+      91 +    expect(disposition).toBe(                                  
+      92 +      `attachment; filename="meu-video.mp4"; filename*=UTF-8''m
+         +eu-video.mp4`,                                                 
+      93 +    );                                                         
+      94      expect((await file.arrayBuffer()).byteLength).toBe(SIZE_BYT
+          ES);
+      95    });
+      96 
+
+⏺ Update(nestjs-project/test/videos-playback.e2e-spec.ts)
+  ⎿  Added 5 lines, removed 3 lines
+      155        uploading.publicId,
+      156        owner.accessToken,
+      157      ).expect(409);
+      158 -    expect((uploadingRes.body as ApiErrorEnvelope).error).toBe
+          -(                                                             
+      159 -      'VIDEO_NOT_READY',                                      
+      160 -    );                                                        
+      158 +    expect(uploadingRes.body).toEqual({                       
+      159 +      statusCode: 409,                                        
+      160 +      error: 'VIDEO_NOT_READY',                               
+      161 +      message: 'Video is not ready for playback',             
+      162 +    });                                                       
+      163      const otherRes = await getPlayback(
+      164        processing.publicId,
+      165        other.accessToken,
+
+⏺ Update(nestjs-project/test/support/videos-e2e.ts)  ⎿  Added 6 lines, removed 3 lines
+      62  }
+      63 
+      64  export async function closeVideosE2eApp(ctx: VideosE2eContext):
+           Promise<void> {
+      65 -  await obliterateTestQueues(ctx.moduleFixture);               
+      66 -  await resetVideoTestBuckets(ctx.moduleFixture);              
+      67 -  await ctx.app.close();                                       
+      65 +  try {                                                        
+      66 +    await obliterateTestQueues(ctx.moduleFixture);             
+      67 +    await resetVideoTestBuckets(ctx.moduleFixture);            
+      68 +  } finally {                                                  
+      69 +    await ctx.app.close();                                     
+      70 +  }                                                            
+      71  }
+      72 
+      73  /** Registers (capturing the confirmation token instead of emai
+          ling it), confirms and logs in. */
+
+⏺ Bash(grep -n "ApiErrorEnvelope" test/videos-playback.e2e-spec.ts; docker
+      compose ps --format '{{.Service}} {{.Status}}')
+  ⎿  (No output)
+
+⏺ The import is still used. Running the two e2e suites in the container.
+
+⏺ Bash(docker compose exec -T nestjs-api npm run test:e2e --
+      test/videos-download.e2e-spec.ts test/videos-playback.e2e-spec.ts 2>&1 |
+      tail -15)
+  ⎿  (No output)
+
+⏺ Green. Recording it in progress.md (under SI-03.15, whose tests it tightens)
+  and committing.
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project && sed -n 147,153p docs/phases/phase-03-videos/progress.md)
+  ⎿  (No output)
+
+⏺ Update(docs/phases/phase-03-videos/progress.md)
+  ⎿  Added 1 line
+      150    - `getDownloadUrl` and `getPlaybackUrl` share `resolveViewab
+           le` and a private `signSourceGet(video, disposition?)`. The on
+           ly difference is the disposition.
+      151    - `VIDEO_NOT_READY` keeps the catalog message "Video is not
+           ready for playback" on the download route too, as the download
+            spec expects. The Error Catalog has a single message for both
+            routes.
+      152    - `@ApiBearerAuth` on this optional-auth route: same note as
+            SI-03.14 (the plan overrides the general `@Public()` rule in
+           `nestjs-controllers.md`).
+      153 +  - **Leader follow-up (W4.4 gate, committed at the start of W
+          +4.5 as `test(videos): tighten playback/download assertions and
+          + e2e teardown`):** the download e2e happy path now compares `C
+          +ontent-Disposition` by full equality (as `videos.service.integ
+          +ration-spec.ts` already did); the playback e2e 409 for an `upl
+          +oading` video uses `toEqual` on the whole body (same as the `p
+          +rocessing` case); `closeVideosE2eApp` wraps the queue/bucket c
+          +leanup in `try/finally` so `app.close()` runs even if the clea
+          +nup throws. `videos-download` + `videos-playback` e2e: 11/11. 
+      154 
+      155  ### SI-03.16 — Infra: `WorkerModule`, entrypoint `src/worker.t
+           s` e serviço `video-worker`
+      156  - **Status:** pending
+
+⏺ Bash(git add nestjs-project/test/videos-download.e2e-spec.ts
+      nestjs-project/test/videos-playback.e2e-spec.ts
+      nestjs-project/test/support/videos-e2e.ts docs/phases/ph…)
+  ⎿  (No output)
+
+⏺ Test commit done (0212efe). Starting SI-03.16. Reading library-refs for the
+  queue libs and the existing wiring.
+
+⏺ Bash(L=docs/phases/phase-03-videos/library-refs.md && grep -n "^## " $L)
+  ⎿  (No output)
+
+⏺ Bash(sed -n 52,122p docs/phases/phase-03-videos/library-refs.md; cd
+      nestjs-project; cat src/app.module.ts; ls src src/queue src/storage
+      src/videos src/test src/confi…)
+  ⎿  (No output)
+
+⏺ Bash(cat src/queue/queue.module.ts src/test/queues.ts
+      src/storage/storage.module.ts; sed -n 1,60p
+      src/storage/storage.service.ts; grep -n "async \|^  [a-zA-Z].*(.*):…)
+  ⎿  (No output)
+
+⏺ Checking context7 for @nestjs/bullmq (Processor/WorkerHost,
+  createApplicationContext) and bullmq 6 (UnrecoverableError,
+  upsertJobScheduler, attemptsStarted).
+
+  Called context7 5 times · 1 failed (ctrl+o to expand)
+
+⏺ The docs confirm the plan's APIs, so I'm moving on to the remaining files that
+  SI-03.16 touches. · summary
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+⏺ I'm extracting the shared TypeORM options so the API and worker validate the
+  same way, then adding WorkerModule, worker.ts, start:worker, and the
+  video-worker service. · summary
+
+⏺ Write(nestjs-project/src/database/typeorm-options.ts)
+  ⎿  Wrote 23 lines to nestjs-project/src/database/typeorm-options.ts
+       1 import type { ConfigType } from '@nestjs/config';
+       2 import type { TypeOrmModuleOptions } from '@nestjs/typeorm';
+       3 import type databaseConfig from '../config/database.config';
+       4
+       5 /**
+       6  * TypeORM root options shared by every Nest entrypoint (API and
+          worker), so the
+       7  * connection parameters live in one place. Entities come from e
+         ach module's
+       8  * `TypeOrmModule.forFeature` (`autoLoadEntities`); the schema c
+     … +16 lines (ctrl+o to expand)
+
+⏺ Update(nestjs-project/src/config/config-load.ts)
+  ⎿  Added 1 line
+      1 +import type { ConfigModuleOptions } from '@nestjs/config';      
+      2  import appConfig from './app.config';
+      3  import authConfig from './auth.config';
+      4  import databaseConfig from './database.config';
+
+⏺ Update(nestjs-project/src/config/config-load.ts)
+  ⎿  Added 1 line
+       7  import storageConfig from './storage.config';
+       8  import swaggerConfig from './swagger.config';
+       9  import videoConfig from './video.config';
+      10 +import { envValidationSchema } from './env.validation';        
+      11 
+      12  /**
+      13   * Config namespaces loaded by every Nest entrypoint (API and w
+          orker),
+
+⏺ Bash(cat >> src/config/config-load.ts <<'EOF'…)
+  ⎿  Updated nestjs-project/src/config/config-load.ts +11
+      23    storageConfig,
+      24    videoConfig,
+      25  ];
+      26 +                                                               
+      27 +/**                                                            
+      28 + * `ConfigModule.forRoot` options of every Nest entrypoint: sam
+         +e namespaces and                                               
+      29 + * the same Joi validation, so the API and the worker fail fast
+         + on the same env.                                              
+      30 + */                                                            
+      31 +export const configModuleOptions: ConfigModuleOptions = {      
+      32 +  isGlobal: true,                                              
+      33 +  load: configLoad,                                            
+      34 +  validationSchema: envValidationSchema,                       
+      35 +  validationOptions: { allowUnknown: true, abortEarly: false },
+      36 +};                                                             
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+⏺ Now AppModule uses both shared builders, and the worker module + entrypoint.
+
+⏺ Write(nestjs-project/src/app.module.ts)
+  ⎿  Added 5 lines, removed 18 lines
+       4  import { AppController } from './app.controller';
+       5  import { AppService } from './app.service';
+       6  import { AuthModule } from './auth/auth.module';
+       7 -import { configLoad } from './config/config-load';             
+       7 +import { configModuleOptions } from './config/config-load';    
+       8  import databaseConfig from './config/database.config';
+       9 -import { envValidationSchema } from './config/env.validation'; 
+       9 +import { buildTypeOrmOptions } from './database/typeorm-options
+         +';                                                             
+      10  import { QueueModule } from './queue/queue.module';
+      11  import { VideosModule } from './videos/videos.module';
+      12 
+      13  @Module({
+      14    imports: [
+      15 -    ConfigModule.forRoot({                                     
+      16 -      isGlobal: true,                                          
+      17 -      load: configLoad,                                        
+      18 -      validationSchema: envValidationSchema,                   
+      19 -      validationOptions: { allowUnknown: true, abortEarly: fals
+         -e },                                                           
+      20 -    }),                                                        
+      15 +    ConfigModule.forRoot(configModuleOptions),                 
+      16      TypeOrmModule.forRootAsync({
+      17        imports: [ConfigModule],
+      18        inject: [databaseConfig.KEY],
+      24 -      useFactory: (dbConfig: ConfigType<typeof databaseConfig>)
+         - => ({                                                         
+      25 -        type: 'postgres',                                      
+      26 -        host: dbConfig.host,                                   
+      27 -        port: dbConfig.port,                                   
+      28 -        username: dbConfig.username,                           
+      29 -        password: dbConfig.password,                           
+      30 -        database: dbConfig.name,                               
+      31 -        autoLoadEntities: true,                                
+      32 -        synchronize: false,                                    
+      33 -      }),                                                      
+      19 +      useFactory: (dbConfig: ConfigType<typeof databaseConfig>)
+         + =>                                                            
+      20 +        buildTypeOrmOptions(dbConfig),                         
+      21      }),
+      22      QueueModule,
+      23      AuthModule,
+
+⏺ Write(nestjs-project/src/worker/worker.module.ts)  ⎿  Wrote 34 lines to nestjs-project/src/worker/worker.module.ts
+       1 import { Module } from '@nestjs/common';
+       2 import { ConfigModule, type ConfigType } from '@nestjs/config';
+       3 import { TypeOrmModule } from '@nestjs/typeorm';
+       4 import { Channel } from '../channels/entities/channel.entity';
+       5 import { configModuleOptions } from '../config/config-load';
+       6 import databaseConfig from '../config/database.config';
+       7 import { buildTypeOrmOptions } from '../database/typeorm-options
+         ';
+       8 import { QueueModule } from '../queue/queue.module';
+       9 import { StorageModule } from '../storage/storage.module';
+     … +25 lines (ctrl+o to expand)
+
+⏺ Write(nestjs-project/src/worker.ts)
+  ⎿  Wrote 21 lines to nestjs-project/src/worker.ts
+       1 import { Logger } from '@nestjs/common';
+       2 import type { ConfigType } from '@nestjs/config';
+       3 import { NestFactory } from '@nestjs/core';
+       4 import queueConfig from './config/queue.config';
+       5 import { WorkerModule } from './worker/worker.module';
+       6
+       7 /**
+       8  * Video worker entrypoint: a Nest application context with no H
+         TTP listener.
+       9  * Shutdown hooks let SIGTERM (`docker compose stop`) close the
+     … +13 lines (ctrl+o to expand)
+  ⎿  Loaded ../.claude/rules/nestjs-modules.md
+
+⏺ Now the start:worker script, the Compose service, and the integration test.
+
+⏺ Bash(python3 - <<'EOF'
+      import re…)
+  ⎿  Updated nestjs-project/compose.yaml +21
+      19        minio-init:
+      20          condition: service_completed_successfully
+      21 
+      22 +  # Queue consumer process (src/worker.ts): same image, code an
+         +d .env as the API, no HTTP port.                               
+      23 +  # On a fresh clone it starts before node_modules/.env/migrati
+         +ons exist, so it relies on the                                 
+      24 +  # restart policy (or `docker compose restart video-worker` af
+         +ter `npm install` + `migration:run`).                          
+      25 +  video-worker:                                                
+      26 +    build:                                                     
+      27 +      context: .                                               
+      28 +      dockerfile: Dockerfile.dev                               
+      29 +    command: ["npm", "run", "start:worker"]                    
+      30 +    restart: unless-stopped                                    
+      31 +    volumes:                                                   
+      32 +      - .:/home/node/app                                       
+      33 +    depends_on:                                                
+      34 +      db:                                                      
+      35 +        condition: service_healthy                             
+      36 +      redis:                                                   
+      37 +        condition: service_healthy                             
+      38 +      minio:                                                   
+      39 +        condition: service_healthy                             
+      40 +      minio-init:                                              
+      41 +        condition: service_completed_successfully              
+      42 +                                                               
+      43    db:
+      44      image: postgres:17
+      45      ports:
+  ⎿  Updated nestjs-project/package.json +2 -1
+      25      "migration:generate": "npm run typeorm -- migration:generat
+          e -d src/database/data-source.ts",
+      26      "migration:create": "npm run typeorm -- migration:create",
+      27      "seed": "ts-node --compiler-options '{\"module\":\"CommonJS
+          \"}' src/database/seeds/seed.ts",
+      28 -    "openapi:export": "ts-node -r tsconfig-paths/register src/o
+         -penapi-export.ts"                                              
+      28 +    "openapi:export": "ts-node -r tsconfig-paths/register src/o
+         +penapi-export.ts",                                             
+      29 +    "start:worker": "ts-node -r tsconfig-paths/register src/wor
+         +ker.ts"                                                        
+      30    },
+      31    "dependencies": {
+      32      "@aws-sdk/client-s3": "^3.1177.0",
+
+⏺ The API has no env_file either: ConfigModule.forRoot reads .env from the
+  mounted working dir, so the worker gets the same config the same way. Now the
+  integration test.
+
+⏺ Write(nestjs-project/src/worker/worker.module.integration-spec.ts)
+  ⎿  Wrote 71 lines to
+     nestjs-project/src/worker/worker.module.integration-spec.ts
+       1 import { getQueueToken } from '@nestjs/bullmq';
+       2 import { ModulesContainer } from '@nestjs/core';
+       3 import { Test, type TestingModule } from '@nestjs/testing';
+       4 import { getRepositoryToken } from '@nestjs/typeorm';
+       5 import type { Queue } from 'bullmq';
+       6 import { DataSource } from 'typeorm';
+       7 import { Channel } from '../channels/entities/channel.entity';
+       8 import {
+       9   VIDEO_MAINTENANCE_QUEUE,
+      10   VIDEO_PROCESSING_QUEUE,
+     … +61 lines (ctrl+o to expand)
+
+⏺ Bash(grep -n "ManyToOne\|OneToOne\|channel:\|user:"
+      src/videos/entities/video.entity.ts
+      src/channels/entities/channel.entity.ts; docker compose exec -T nestjs-api
+      np…)
+  ⎿  (No output)
+
+⏺ 3/3. Now the container ACs: bring up video-worker, check it stays up, the log,
+  no port, and clean stop.
+
+⏺ Bash(docker compose up -d video-worker 2>&1 | tail -3; sleep 25; docker
+      compose ps video-worker --format '{{.Service}} | {{.Status}} |
+      ports=[{{.Ports}}]'; docker co…)
+  ⎿  (No output)
+
+⏺ Bash(docker compose exec -T video-worker ps -o pid,args -e | grep -v "ps -o";
+      S=$(date +%s); docker compose stop video-worker 2>&1 | tail -1; echo "stop
+      took $(( $(d…)
+  ⎿  (No output)
+
+⏺ Stopped in 1 s (no 10 s kill), but exit code 1. Checking why.
+
+⏺ Bash(docker compose logs video-worker --no-log-prefix 2>&1 | tail -8 | sed
+      's/\x1b\[[0-9;]*m//g')
+  ⎿  (No output)
+
+⏺ Nest's shutdown hook re-sends SIGTERM after closing the app, so npm exits 1.
+  I'm adding a log line to WorkerModule to confirm the hooks run. · summary
+
+⏺ Bash(python3 - <<'EOF'
+      p='src/worker/worker.module.ts'; s=open(p).read()…)
+  ⎿  Updated nestjs-project/src/worker/worker.module.ts +8 -2
+      1 -import { Module } from '@nestjs/common';                        
+      1 +import { Logger, Module, type OnApplicationShutdown } from '@nes
+        +tjs/common';                                                    
+      2  import { ConfigModule, type ConfigType } from '@nestjs/config';
+      3  import { TypeOrmModule } from '@nestjs/typeorm';
+      4  import { Channel } from '../channels/entities/channel.entity';
+     ...
+      31      StorageModule,
+      32    ],
+      33  })
+      34 -export class WorkerModule {}                                   
+      34 +export class WorkerModule implements OnApplicationShutdown {   
+      35 +  private readonly logger = new Logger('VideoWorker');         
+      36 +                                                               
+      37 +  onApplicationShutdown(signal?: string): void {               
+      38 +    this.logger.log(`Video worker stopped (${signal ?? 'no sign
+         +al'})`);                                                       
+      39 +  }                                                            
+      40 +}                                                              
+
+⏺ The shutdown log line never shows up. Either the hooks never run (SIGTERM
+  doesn't reach node through npm → sh), or the line is lost when the process
+  dies. Checking which.
+
+⏺ Bash(sleep 15; docker compose exec -T video-worker ps -o pid,ppid,args -e |
+      grep -v "ps -o"; docker compose exec -T video-worker sh -c 'ls -l /bin/sh;
+      readlink -f /b…)
+  ⎿  (No output)
+
+⏺ Bash(docker compose exec -T video-worker kill -TERM 19; sleep 3; docker
+      compose logs video-worker --no-log-prefix 2>&1 | sed 's/\x1b\[[0-9;]*m//g'
+      | tail -4; docker…)
+  ⎿  (No output)
+
+⏺ Even a SIGTERM sent straight to node gives no "stopped" line, and the restart
+  policy brought the container back. Reproducing inside the nestjs-api container
+  so I can see the full output.
+
+⏺ Bash(docker compose exec -T nestjs-api sh -c 'QUEUE_PREFIX=probe node
+      node_modules/.bin/ts-node -r tsconfig-paths/register src/worker.ts >
+      /tmp/w.log 2>&1 & P=$!; sl…)
+  ⎿  (No output)
+
+⏺ In a file, the hook runs and logs "stopped (SIGTERM)". My container check only
+  looked at the last 4 lines, which belonged to the restarted instance.
+  Grepping the full container log:
+
+⏺ Bash(docker compose logs video-worker --no-log-prefix 2>&1 | sed
+      's/\x1b\[[0-9;]*m//g' | grep -E "VideoWorker|npm error signal")
+  ⎿  (No output)
+
+⏺ The stop hook never runs because npm doesn't forward SIGTERM to node, so I'm
+  adding exec to the script so node takes over the shell and receives the signal
+  directly. · summary
+
+⏺ Bash(sed -i '' 's#"start:worker": "ts-node -r tsconfig-paths/register
+      src/worker.ts"#"start:worker": "exec ts-node -r tsconfig-paths/register
+      src/worker.ts"#' packag…)
+  ⎿  Updated nestjs-project/package.json +1 -1
+      26      "migration:create": "npm run typeorm -- migration:create",
+      27      "seed": "ts-node --compiler-options '{\"module\":\"CommonJS
+          \"}' src/database/seeds/seed.ts",
+      28      "openapi:export": "ts-node -r tsconfig-paths/register src/o
+          penapi-export.ts",
+      29 -    "start:worker": "ts-node -r tsconfig-paths/register src/wor
+         -ker.ts"                                                        
+      29 +    "start:worker": "exec ts-node -r tsconfig-paths/register sr
+         +c/worker.ts"                                                   
+      30    },
+      31    "dependencies": {
+      32      "@aws-sdk/client-s3": "^3.1177.0",
+
+⏺ With exec, node now runs as PID 1's direct child, so docker compose stop runs
+  the hooks in 1 s; npm's leftover SIGTERM message and exit 1 are cosmetic. Next
+  I'll bring the worker back and run the app e2e, tsc and lint for the
+  AppModule change. · summary
+
+⏺ Bash(docker compose up -d video-worker >/dev/null 2>&1; docker compose exec -T
+      nestjs-api sh -c 'npx jest src/worker src/videos/videos.module.spec.ts
+      src/database/mi…)
+  ⎿  (No output)
+⏺ Bash(sleep 20; docker compose ps video-worker --format '{{.Status}}
+      ports=[{{.Ports}}]'; docker inspect nestjs-project-video-worker-1 --format
+      'restarts={{.RestartCo…)
+  ⎿  (No output)
+
+⏺ Stable, no ports. Updating progress.md and committing SI-03.16.
+
+⏺ Update(docs/phases/phase-03-videos/progress.md)
+  ⎿  Added 9 lines, removed 3 lines
+      153    - **Leader follow-up (W4.4 gate, committed at the start of W
+           4.5 as `test(videos): tighten playback/download assertions and
+            e2e teardown`):** the download e2e happy path now compares `C
+           ontent-Disposition` by full equality (as `videos.service.integ
+           ration-spec.ts` already did); the playback e2e 409 for an `upl
+           oading` video uses `toEqual` on the whole body (same as the `p
+           rocessing` case); `closeVideosE2eApp` wraps the queue/bucket c
+           leanup in `try/finally` so `app.close()` runs even if the clea
+           nup throws. `videos-download` + `videos-playback` e2e: 11/11.
+      154 
+      155  ### SI-03.16 — Infra: `WorkerModule`, entrypoint `src/worker.t
+           s` e serviço `video-worker`
+      156 -- **Status:** pending                                         
+      157 -- **Tests:** —                                                
+      158 -- **Observations:** none                                      
+      156 +- **Status:** completed                                       
+      157 +- **Tests:** 3 passing (`src/worker/worker.module.integration-
+          +spec.ts`: Postgres connection + `Video → Channel → User` relat
+          +ion query, both queues on the `test` prefix + `StorageService`
+          +, no controller and no `AuthModule`/`ThrottlerModule`/`VideosM
+          +odule`). Regression on the touched wiring: `videos.module.spec
+          +.ts`, `migrations.integration-spec.ts`, `test/app.e2e-spec.ts`
+          + (`GET /` 200) green; `tsc --noEmit` 0, eslint 0 on the change
+          +d files                                                       
+      158 +- **Observations:**                                           
+      159 +  - `buildTypeOrmOptions` lives in `src/database/typeorm-optio
+          +ns.ts`. The `ConfigModule.forRoot` options (load + Joi + `vali
+          +dationOptions`) also moved to `configModuleOptions` in `src/co
+          +nfig/config-load.ts`, so `AppModule` and `WorkerModule` share 
+          +both without copying the object (same reason as the TypeORM bu
+          +ilder).                                                       
+      160 +  - **Plan deviation (`exec` in `start:worker`):** the script 
+          +is `exec ts-node -r tsconfig-paths/register src/worker.ts`. Wi
+          +thout `exec`, `npm run` starts `sh -c` (dash), which does not 
+          +exec the command. `docker compose stop` sends SIGTERM to npm (
+          +PID 1), npm forwards it to `sh`, `sh` dies, and node is SIGKIL
+          +Led with the container **without running the shutdown hooks** 
+          +(reproduced: no "stopped" log on `stop`, but the log appears w
+          +hen SIGTERM goes straight to node). With `exec`, node is npm's
+          + direct child and gets the forwarded signal. The compose `comm
+          +and` is still `npm run start:worker`, as the plan says.       
+      161 +  - `WorkerModule` implements `OnApplicationShutdown` only to 
+          +log `Video worker stopped (<signal>)`. That line is the eviden
+          +ce that the hooks ran. Container check: `docker compose up -d 
+          +video-worker` → `Up`, no published ports, `RestartCount=0`, `r
+          +estart: unless-stopped`; log `Video worker started (redis redi
+          +s:6379, queue prefix "bull")`; `docker compose stop video-work
+          +er` returns in ~1 s with `Video worker stopped (SIGTERM)` in t
+          +he log.                                                       
+      162 +  - After the hooks, Nest re-raises SIGTERM on its own process
+          +, so npm prints `npm error signal SIGTERM` and the container e
+          +xits with code 1. This is cosmetic: the shutdown is complete, 
+          +and with `unless-stopped` a manual stop is never restarted. Wh
+          +en node was killed directly (not via `stop`), the restart poli
+          +cy brought the container back on its own.                     
+      163 +  - The container uses `QUEUE_PREFIX=bull` from `.env`; Jest f
+          +orces `test` (`setup-test-env.ts`), so the container cannot co
+          +nsume test jobs. Re-checked once the processors exist (SI-03.1
+          +8/03.19).                                                     
+      164 +  - AC "fresh environment (`down -v && up -d`)" was not run he
+          +re: it wipes the shared dev Postgres/MinIO volumes. It belongs
+          + to the leader gate / E5 DoD from scratch. Restart-policy reco
+          +very is covered by the kill test above.                       
+      165 
+      166  ### SI-03.17 — Ferramentas de mídia: wrapper `ffprobe`/`ffmpeg
+           ` e fixtures
+      167  - **Status:** pending
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project && sed -i '' 's/^\*\*SIs:\*\* 15\/21 completed/**SIs:** 16\/21
+      completed/' d…)
+  ⎿  Updated docs/phases/phase-03-videos/progress.md +1 -1
+      1  # phase-03-videos — Progress
+      2 
+      3  **Status:** in_progress
+      4 -**SIs:** 15/21 completed                                        
+      4 +**SIs:** 16/21 completed                                        
+      5 
+      6  ### SI-03.1 — Infra: dependências, namespaces de configuração e
+         variáveis de ambiente
+      7  - **Status:** completed
+
+⏺ SI-03.16 committed (b69e264). Moving to SI-03.17. Checking the storage helpers
+  the integration test will use.
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project/nestjs-project && sed -n 155,250p
+      src/storage/storage.service.ts; cat src/te…)
+  ⎿  (No output)
+
+⏺ Generating the two fixtures once, inside the container (Debian ffmpeg with
+  libx264/aac).
+
+⏺ Bash(docker compose exec -T nestjs-api sh -c 'mkdir -p test/fixtures && ffmpeg
+      -v error -y -f lavfi -i testsrc=duration=2:size=160x120:rate=10 -f lavfi
+      -i sine=frequ…)
+  ⎿  2 files changed (binary, mode only or too large to show)
+     nestjs-project/test/fixtures/not-a-video.mp4
+     nestjs-project/test/fixtures/sample-2s.mp4
+
+⏺ Fixtures are sample-2s.mp4 (a valid 2-second clip) and not-a-video.mp4 (random
+  bytes that ffprobe rejects); next I'm writing the error definitions,
+  constants, pure mapper, and execFile wrapper. · summary
+
+⏺ Bash(cat src/videos/videos.constants.ts | head -40; sed -n 1,40p
+      src/videos/videos.exceptions.ts)
+  ⎿  (No output)
+
+⏺ Write(nestjs-project/src/videos/processing/processing.constants.ts)
+  ⎿  Wrote 20 lines to
+     nestjs-project/src/videos/processing/processing.constants.ts
+       1 /**
+       2  * Upper bound for one ffprobe/ffmpeg run. A hung tool is killed
+          (SIGTERM) and
+       3  * the failure is transient, so it cannot hold a worker slot for
+         ever.
+       4  */
+       5 export const MEDIA_TOOL_TIMEOUT_MS = 120000;
+       6
+       7 /**
+       8  * stderr markers of an input the tools cannot parse at all. A n
+     … +13 lines (ctrl+o to expand)
+
+⏺ Write(nestjs-project/src/videos/processing/media-tools.errors.ts)
+  ⎿  Wrote 21 lines to
+     nestjs-project/src/videos/processing/media-tools.errors.ts
+       1 /**
+       2  * The input is not a usable video (cannot be parsed, or has no
+         video stream).
+       3  * Permanent: the job fails with `INVALID_MEDIA` and is never re
+         tried.
+       4  */
+       5 export class InvalidMediaError extends Error {
+       6   constructor(message: string) {
+       7     super(message);
+       8     this.name = 'InvalidMediaError';
+     … +13 lines (ctrl+o to expand)
+
+⏺ Write(nestjs-project/src/videos/processing/media-metadata.util.ts)
+  ⎿  Wrote 70 lines to
+     nestjs-project/src/videos/processing/media-metadata.util.ts
+       1 import { InvalidMediaError } from './media-tools.errors';
+       2 import {
+       3   THUMBNAIL_MAX_OFFSET_SECONDS,
+       4   THUMBNAIL_MIN_DURATION_SECONDS,
+       5 } from './processing.constants';
+       6
+       7 /** The subset of `ffprobe -print_format json -show_format -show
+         _streams` we read. */
+       8 export interface FfprobeOutput {
+       9   format?: {
+     … +61 lines (ctrl+o to expand)
+
+⏺ Write(nestjs-project/src/videos/processing/media-tools.service.ts)
+  ⎿  Wrote 92 lines to
+     nestjs-project/src/videos/processing/media-tools.service.ts
+       1 import { execFile, type ExecFileException } from 'node:child_pro
+         cess';
+       2 import { Injectable } from '@nestjs/common';
+       3 import {
+       4   mapProbeOutput,
+       5   type FfprobeOutput,
+       6   type MediaMetadata,
+       7 } from './media-metadata.util';
+       8 import { InvalidMediaError, MediaToolTransientError } from './me
+         dia-tools.errors';
+     … +84 lines (ctrl+o to expand)
+  ⎿  Loaded ../.claude/rules/typeorm-queries.md
+  ⎿  Loaded ../.claude/rules/nestjs-services.md
+
+⏺ Now the three test files for SI-03.17.
+
+⏺ Write(nestjs-project/src/videos/processing/media-metadata.util.spec.ts)
+  ⎿  Wrote 84 lines to
+     nestjs-project/src/videos/processing/media-metadata.util.spec.ts
+       1 import {
+       2   mapProbeOutput,
+       3   thumbnailTimestamp,
+       4   type FfprobeOutput,
+       5 } from './media-metadata.util';
+       6 import { InvalidMediaError } from './media-tools.errors';
+       7
+       8 const videoStream = {
+       9   codec_type: 'video',
+      10   codec_name: 'h264',
+     … +74 lines (ctrl+o to expand)
+
+⏺ Write(nestjs-project/src/videos/processing/media-tools.service.spec.ts)
+  ⎿  Wrote 164 lines to
+     nestjs-project/src/videos/processing/media-tools.service.spec.ts
+       1 import { execFile, type ExecFileException } from 'node:child_pro
+         cess';
+       2 import { Test } from '@nestjs/testing';
+       3 import { InvalidMediaError, MediaToolTransientError } from './me
+         dia-tools.errors';
+       4 import { MediaToolsService } from './media-tools.service';
+       5 import { MEDIA_TOOL_TIMEOUT_MS } from './processing.constants';
+       6
+       7 jest.mock('node:child_process', () => ({ execFile: jest.fn() }))
+         ;
+     … +157 lines (ctrl+o to expand)
+
+⏺ Write(nestjs-project/src/videos/processing/media-tools.service.integration-spe
+       c.ts)
+  ⎿  Wrote 95 lines to nestjs-project/src/videos/processing/media-tools.ser
+     vice.integration-spec.ts
+       1 import { randomUUID } from 'node:crypto';
+       2 import { readFile, rm } from 'node:fs/promises';
+       3 import { tmpdir } from 'node:os';
+       4 import { join } from 'node:path';
+       5 import { ConfigModule, type ConfigType } from '@nestjs/config';
+       6 import { Test, type TestingModule } from '@nestjs/testing';
+       7 import storageConfig from '../../config/storage.config';
+       8 import { StorageModule } from '../../storage/storage.module';
+       9 import { StorageService } from '../../storage/storage.service';
+      10 import { resetVideoTestBuckets } from '../../test/storage';
+     … +85 lines (ctrl+o to expand)
+
+⏺ Bash(docker compose exec -T nestjs-api sh -c 'npx jest src/videos/processing
+      2>&1 | grep -vE "localstorage|trace-warnings" | tail -40; npx prettier
+      --write src/video…)
+  ⎿  Updated
+     nestjs-project/src/videos/processing/media-tools.service.spec.ts +4 -1
+      1  import { execFile, type ExecFileException } from 'node:child_pro
+         cess';
+      2  import { Test } from '@nestjs/testing';
+      3 -import { InvalidMediaError, MediaToolTransientError } from './me
+        -dia-tools.errors';                                              
+      3 +import {                                                        
+      4 +  InvalidMediaError,                                            
+      5 +  MediaToolTransientError,                                      
+      6 +} from './media-tools.errors';                                  
+      7  import { MediaToolsService } from './media-tools.service';
+      8  import { MEDIA_TOOL_TIMEOUT_MS } from './processing.constants';
+      9 
+  ⎿  Updated nestjs-project/src/videos/processing/media-tools.service.ts +4
+     -1
+       5    type FfprobeOutput,
+       6    type MediaMetadata,
+       7  } from './media-metadata.util';
+       8 -import { InvalidMediaError, MediaToolTransientError } from './m
+         -edia-tools.errors';                                            
+       8 +import {                                                       
+       9 +  InvalidMediaError,                                           
+      10 +  MediaToolTransientError,                                     
+      11 +} from './media-tools.errors';                                 
+      12  import {
+      13    INVALID_MEDIA_STDERR_MARKERS,
+      14    MEDIA_TOOL_TIMEOUT_MS,
+
+⏺ 17/17 green, lint clean (prettier only reflowed imports). Type-check, then
+  progress + commit.
+
+⏺ Bash(docker compose exec -T nestjs-api npx tsc --noEmit; echo tsc=$?; git
+      check-ignore -v test/fixtures/sample-2s.mp4 || echo "fixtures not
+      ignored")
+  ⎿  (No output)
+
+⏺ Update(docs/phases/phase-03-videos/progress.md)
+  ⎿  Added 9 lines, removed 3 lines
+      164    - AC "fresh environment (`down -v && up -d`)" was not run he
+           re: it wipes the shared dev Postgres/MinIO volumes. It belongs
+            to the leader gate / E5 DoD from scratch. Restart-policy reco
+           very is covered by the kill test above.
+      165 
+      166  ### SI-03.17 — Ferramentas de mídia: wrapper `ffprobe`/`ffmpeg
+           ` e fixtures
+      167 -- **Status:** pending                                         
+      168 -- **Tests:** —                                                
+      169 -- **Observations:** none                                      
+      167 +- **Status:** completed                                       
+      168 +- **Tests:** 17 passing (`media-metadata.util.spec.ts` 7, `med
+          +ia-tools.service.spec.ts` 7 with `execFile` mocked, `media-too
+          +ls.service.integration-spec.ts` 3 with real ffprobe/ffmpeg + M
+          +inIO); `tsc --noEmit` 0, eslint 0                             
+      169 +- **Observations:**                                           
+      170 +  - Fixtures generated once inside the container (Debian ffmpe
+          +g 5.1) and versioned: `test/fixtures/sample-2s.mp4` (17 KB; `t
+          +estsrc` 160×120 @10 fps h264 + 440 Hz `sine` aac 32k, 2.000 s,
+          + `+faststart`, `+bitexact`) and `test/fixtures/not-a-video.mp4
+          +` (4 KiB from `/dev/urandom`; ffprobe answers `moov atom not f
+          +ound` + `Invalid data found when processing input`).          
+      171 +  - `extractFrame` adds `-v error -nostdin -y` to the plan's `
+          +-ss t -i input -frames:v 1 out` arguments. `-nostdin` stops ff
+          +mpeg from reading the worker's stdin, and `-y` keeps it from b
+          +locking on an overwrite prompt. Both runs use `execFile` with 
+          +`{ timeout: 120000 }` (`MEDIA_TOOL_TIMEOUT_MS`).              
+      172 +  - Classification order in the wrapper: `error.killed` (timeo
+          +ut → SIGTERM) → `MediaToolTransientError`, checked first. Then
+          + a non-zero exit whose stderr has an `INVALID_MEDIA_STDERR_MAR
+          +KERS` entry → `InvalidMediaError`. Anything else (5XX from sto
+          +rage, `ENOENT` for a missing binary, other exits) → `MediaTool
+          +TransientError`. A missing video stream is `InvalidMediaError`
+          + from `mapProbeOutput`.                                       
+      173 +  - `durationSeconds` is `null` when ffprobe reports no durati
+          +on or `N/A` (all metadata columns are nullable). `thumbnailTim
+          +estamp(null)` → 0.                                            
+      174 +  - The integration test uploads each fixture to `videos-test`
+          + and probes it through an **internal** presigned URL (`minio:9
+          +000`), so ffprobe reads it over HTTP the same way the worker w
+          +ill. Buckets are emptied in `afterAll`.                       
+      175 +  - New files live in `src/videos/processing/`; the constants 
+          +(`MEDIA_TOOL_TIMEOUT_MS`, stderr markers, thumbnail offsets) a
+          +re in `processing.constants.ts` and the error classes in `medi
+          +a-tools.errors.ts` (the plan did not name these files).       
+      176 
+      177  ### SI-03.18 — Consumer `process-video` (metadados e thumbnail
+           )
+      178  - **Status:** pending
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project && sed -i '' 's/^\*\*SIs:\*\* 16\/21 completed/**SIs:** 17\/21
+      completed/' d…)
+  ⎿  Updated docs/phases/phase-03-videos/progress.md +1 -1
+      1  # phase-03-videos — Progress
+      2 
+      3  **Status:** in_progress
+      4 -**SIs:** 16/21 completed                                        
+      4 +**SIs:** 17/21 completed                                        
+      5 
+      6  ### SI-03.1 — Infra: dependências, namespaces de configuração e
+         variáveis de ambiente
+      7  - **Status:** completed
+
+⏺ SI-03.17 committed (738148e). SI-03.18 next: reading the Video entity and how
+  the API does its conditional status updates.
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project/nestjs-project && sed -n 1,60p
+      src/videos/entities/video.entity.ts; grep -n…)
+  ⎿  (No output)
+
+⏺ Bash(sed -n 265,280p src/videos/videos.service.ts; grep -rn
+      "default.jpg\|/source\`\|sourceKey\|thumbnailKey\|thumbnail_key" src
+      --include=*.ts | grep -v spec)
+  ⎿  No matches found
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+⏺ I'm planning SI-03.18 so the consumer handles the classified errors from
+  VideoProcessingService.process(), and I'm checking how the integration specs
+  seed their data so I can reuse those helpers. · summary
+
+⏺ Bash(sed -n 1,140p src/videos/videos.service.integration-spec.ts; cat
+      src/test/create-test-data-source.ts; grep -rn "export async function
+      cleanAllTables\|export fun…)
+  ⎿  (No output)
+
+⏺ Two more lookups: the public-id helper and the OnWorkerEvent decorator in
+  @nestjs/bullmq 11, which I'll use to log the consumer coming online.
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+⏺ ready is a WorkerListener event (fires once the blocking Redis connection is
+  up), so it is a good "worker connected" log. Writing the service, errors,
+  constants and consumer.
+
+⏺ Bash(cat >> src/videos/processing/processing.constants.ts <<'EOF'…)
+  ⎿  Updated nestjs-project/src/videos/processing/processing.constants.ts
+     +14
+      18 
+      19  /** Below this duration (or when it is unknown) the thumbnail i
+          s the first frame. */
+      20  export const THUMBNAIL_MIN_DURATION_SECONDS = 1;
+      21 +                                                               
+      22 +/**                                                            
+      23 + * TTL of the internal presigned GET handed to ffprobe/ffmpeg. 
+         +It must outlive                                                
+      24 + * the whole job (two tool runs of up to 120 s each, plus retri
+         +es in-process).                                                
+      25 + */                                                            
+      26 +export const SOURCE_URL_TTL_SECONDS = 3600;                    
+      27 +                                                               
+      28 +/** Thumbnail object name under `{videoId}/` in the thumbnails 
+         +bucket. */                                                     
+      29 +export const THUMBNAIL_OBJECT_NAME = 'default.jpg';            
+      30 +                                                               
+      31 +export const THUMBNAIL_CONTENT_TYPE = 'image/jpeg';            
+      32 +                                                               
+      33 +/** Prefix of the local frame file in `os.tmpdir()`, removed af
+         +ter every job. */                                              
+      34 +export const THUMBNAIL_TMP_PREFIX = 'streamtube-thumbnail-';   
+
+⏺ Write(nestjs-project/src/videos/processing/video-processing.errors.ts)
+  ⎿  Wrote 10 lines to
+     nestjs-project/src/videos/processing/video-processing.errors.ts
+       1 /**
+       2  * The uploaded source object is gone from storage. Permanent: r
+         etrying cannot
+       3  * bring it back, so the video fails with `PROCESSING_ERROR`.
+       4  */
+       5 export class SourceObjectMissingError extends Error {
+       6   constructor(key: string) {
+       7     super(`Source object ${key} does not exist`);
+       8     this.name = 'SourceObjectMissingError';
+       9   }
+     … +1 line (ctrl+o to expand)
+
+⏺ Write(nestjs-project/src/videos/processing/video-processing.service.ts)
+  ⎿  Wrote 148 lines to
+     nestjs-project/src/videos/processing/video-processing.service.ts
+       1 import { randomUUID } from 'node:crypto';
+       2 import { readFile, rm } from 'node:fs/promises';
+       3 import { tmpdir } from 'node:os';
+       4 import { join } from 'node:path';
+       5 import { Inject, Injectable, Logger } from '@nestjs/common';
+       6 import type { ConfigType } from '@nestjs/config';
+       7 import { InjectRepository } from '@nestjs/typeorm';
+       8 import { In, Repository } from 'typeorm';
+       9 import storageConfig from '../../config/storage.config';
+      10 import { StorageService } from '../../storage/storage.service';
+     … +138 lines (ctrl+o to expand)
+
+⏺ Write(nestjs-project/src/videos/processing/video-processing.consumer.ts)
+  ⎿  Wrote 72 lines to
+     nestjs-project/src/videos/processing/video-processing.consumer.ts
+       1 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bu
+         llmq';
+       2 import { Logger } from '@nestjs/common';
+       3 import { UnrecoverableError, type Job } from 'bullmq';
+       4 import {
+       5   VIDEO_PROCESSING_QUEUE,
+       6   type ProcessVideoJobData,
+       7 } from '../../queue/queue.constants';
+       8 import { VideoFailureReason } from '../entities/video.entity';
+       9 import { InvalidMediaError } from './media-tools.errors';
+     … +63 lines (ctrl+o to expand)
+
+⏺ Small fix to a misleading comment (each retry signs a fresh URL), then
+  register the providers in WorkerModule.
+
+⏺ Update(nestjs-project/src/videos/processing/processing.constants.ts)
+  ⎿  Added 2 lines, removed 1 line
+      21 
+      22  /**
+      23   * TTL of the internal presigned GET handed to ffprobe/ffmpeg.
+          It must outlive
+      24 - * the whole job (two tool runs of up to 120 s each, plus retri
+         -es in-process).                                                
+      24 + * the whole job attempt (two tool runs of up to 120 s each); e
+         +very attempt                                                   
+      25 + * signs a fresh one.                                          
+      26   */
+      27  export const SOURCE_URL_TTL_SECONDS = 3600;
+      28 
+
+⏺ Update(nestjs-project/src/worker/worker.module.ts)
+  ⎿  Added 5 lines
+      30      QueueModule,
+      31      StorageModule,
+      32    ],
+      33 +  providers: [                                                 
+      34 +    MediaToolsService,                                         
+      35 +    VideoProcessingService,                                    
+      36 +    VideoProcessingConsumer,                                   
+      37 +  ],                                                           
+      38  })
+      39  export class WorkerModule implements OnApplicationShutdown {
+      40    private readonly logger = new Logger('VideoWorker');
+
+⏺ Update(nestjs-project/src/worker/worker.module.ts)
+  ⎿  Added 3 lines
+       9  import { StorageModule } from '../storage/storage.module';
+      10  import { User } from '../users/entities/user.entity';
+      11  import { Video } from '../videos/entities/video.entity';
+      12 +import { MediaToolsService } from '../videos/processing/media-t
+         +ools.service';                                                 
+      13 +import { VideoProcessingConsumer } from '../videos/processing/v
+         +ideo-processing.consumer';                                     
+      14 +import { VideoProcessingService } from '../videos/processing/vi
+         +deo-processing.service';                                       
+      15 
+      16  /**
+      17   * Root module of the video worker process (`src/worker.ts`): q
+          ueue consumers
+
+⏺ Now a small test-support seeder for worker-side suites (SI-03.18 and 03.19
+  both need rows in arbitrary states without going through the HTTP flow), then
+  the tests.
+
+⏺ Write(nestjs-project/src/test/videos.ts)
+  ⎿  Wrote 64 lines to nestjs-project/src/test/videos.ts
+      1 import { randomUUID } from 'node:crypto';
+      2 import type { DataSource } from 'typeorm';
+      3 import { Channel } from '../channels/entities/channel.entity';
+      4 import { User } from '../users/entities/user.entity';
+      5 import {
+      6   Video,
+      7   VideoProcessingStatus,
+      8 } from '../videos/entities/video.entity';
+      9 import { generatePublicId } from '../videos/public-id.util';
+     … +55 lines (ctrl+o to expand)
+
+⏺ Write(nestjs-project/src/videos/processing/video-processing.consumer.spec.ts)
+  ⎿  Wrote 114 lines to
+     nestjs-project/src/videos/processing/video-processing.consumer.spec.ts
+       1 import { Test } from '@nestjs/testing';
+       2 import { UnrecoverableError, type Job } from 'bullmq';
+       3 import type { ProcessVideoJobData } from '../../queue/queue.cons
+         tants';
+       4 import { VideoFailureReason } from '../entities/video.entity';
+       5 import { InvalidMediaError, MediaToolTransientError } from './me
+         dia-tools.errors';
+       6 import { VideoProcessingConsumer } from './video-processing.cons
+         umer';
+       7 import { SourceObjectMissingError } from './video-processing.err
+     … +108 lines (~4 KB) (ctrl+o to expand)
+
+⏺ Now the integration spec. It drives the real consumer with Postgres + MinIO +
+  ffprobe/ffmpeg, plus one real-BullMQ case to prove UnrecoverableError fails
+  the job after a single attempt.
+
+⏺ Write(nestjs-project/src/videos/processing/video-processing.service.integratio
+       n-spec.ts)
+  ⎿  Wrote 343 lines to nestjs-project/src/videos/processing/video-processi
+     ng.service.integration-spec.ts
+       1 import { readdir, readFile } from 'node:fs/promises';
+       2 import { tmpdir } from 'node:os';
+       3 import { join } from 'node:path';
+       4 import { getQueueToken } from '@nestjs/bullmq';
+       5 import { ConfigModule, type ConfigType } from '@nestjs/config';
+       6 import { Test, type TestingModule } from '@nestjs/testing';
+       7 import { TypeOrmModule } from '@nestjs/typeorm';
+       8 import { UnrecoverableError, type Job, type Queue } from 'bullmq
+         ';
+       9 import { DataSource, Repository } from 'typeorm';
+     … +334 lines (ctrl+o to expand)
+
+⏺ Bash(docker compose exec -T nestjs-api sh -c 'npx prettier --write
+      src/videos/processing src/test/videos.ts src/worker >/dev/null; npx jest
+      src/videos/processing/vid…)
+  ⎿  Updated nestjs-project/src/test/videos.ts +1 -4
+       2  import type { DataSource } from 'typeorm';
+       3  import { Channel } from '../channels/entities/channel.entity';
+       4  import { User } from '../users/entities/user.entity';
+       5 -import {                                                       
+       6 -  Video,                                                       
+       7 -  VideoProcessingStatus,                                       
+       8 -} from '../videos/entities/video.entity';                      
+       5 +import { Video, VideoProcessingStatus } from '../videos/entitie
+         +s/video.entity';                                               
+       6  import { generatePublicId } from '../videos/public-id.util';
+       7 
+       8  /** A confirmed user with its channel, the owner every video ro
+          w needs. */
+  ⎿  Updated
+     nestjs-project/src/videos/processing/video-processing.consumer.spec.ts
+     +4 -1
+       2  import { UnrecoverableError, type Job } from 'bullmq';
+       3  import type { ProcessVideoJobData } from '../../queue/queue.con
+          stants';
+       4  import { VideoFailureReason } from '../entities/video.entity';
+       5 -import { InvalidMediaError, MediaToolTransientError } from './m
+         -edia-tools.errors';                                            
+       5 +import {                                                       
+       6 +  InvalidMediaError,                                           
+       7 +  MediaToolTransientError,                                     
+       8 +} from './media-tools.errors';                                 
+       9  import { VideoProcessingConsumer } from './video-processing.con
+          sumer';
+      10  import { SourceObjectMissingError } from './video-processing.er
+          rors';
+      11  import { VideoProcessingService } from './video-processing.serv
+          ice';
+  ⎿  Updated
+     nestjs-project/src/videos/processing/video-processing.consumer.ts +1
+     -3
+      43        const reason = permanentFailureReason(error);
+      44        if (reason) {
+      45          await this.processingService.markFailed(videoId, reason
+          );
+      46 -        throw new UnrecoverableError(                          
+      47 -          `${reason}: ${(error as Error).message}`,            
+      48 -        );                                                     
+      46 +        throw new UnrecoverableError(`${reason}: ${(error as Er
+         +ror).message}`);                                               
+      47        }
+      48        // `attemptsStarted` already counts the attempt that is r
+          unning now.
+      49        if (job.attemptsStarted >= (job.opts.attempts ?? 1)) {
+  ⎿  Updated nestjs-project/src/videos/processing/video-processing.service.
+     integration-spec.ts +5 -7
+      241        expect(row.thumbnail_key).toBeNull();
+      242        expect(row.processed_at).toBeNull();
+      243        await expect(
+      244 -        storage.headObject(                                   
+      245 -          buckets.thumbnailsBucket,                           
+      246 -          `${video.id}/default.jpg`,                          
+      247 -        ),                                                    
+      244 +        storage.headObject(buckets.thumbnailsBucket, `${video.
+          +id}/default.jpg`),                                            
+      245        ).resolves.toBeNull();
+      246      },
+      247    );
+     ...
+      299        .mockRejectedValue(new MediaToolTransientError('ffprobe 
+           timed out'));
+      300 
+      301      await expect(
+      305 -      consumer.process({ ...firstAttempt(video.id), attemptsSt
+          -arted: 3 } as Job<                                            
+      306 -        ProcessVideoJobData                                   
+      307 -      >),                                                     
+      302 +      consumer.process({                                      
+      303 +        ...firstAttempt(video.id),                            
+      304 +        attemptsStarted: 3,                                   
+      305 +      } as Job<ProcessVideoJobData>),                         
+      306      ).rejects.toBeInstanceOf(MediaToolTransientError);
+      307 
+      308      const row = await videoRepository.findOneByOrFail({ id: vi
+           deo.id });
+
+⏺ 19/19 green. A pg DeprecationWarning ("client.query() when the client is
+  already executing") showed up; checking whether it is new or already in
+  existing suites.
+⏺ Bash(docker compose exec -T nestjs-api sh -c 'for f in
+      src/videos/videos.service.integration-spec.ts
+      src/worker/worker.module.integration-spec.ts src/videos/processi…)
+  ⎿  (No output)
+
+⏺ The warning already appears in the existing videos.service integration spec,
+  so it comes from the TypeORM/pg stack rather than this change. I'm restarting
+  the container worker to load the consumer, then running tsc and lint.
+  · summary
+
+⏺ Bash(docker compose restart video-worker >/dev/null 2>&1; docker compose exec
+      -T nestjs-api sh -c 'npx tsc --noEmit; echo tsc=$?; npx eslint
+      src/videos/processing sr…)
+  ⎿  (No output)
+
+⏺ Bash(sed -n 248,268p
+      src/videos/processing/video-processing.service.integration-spec.ts)
+  ⎿  (No output)
+
+⏺ bind comes back as any here (strictBindCallApply is off). MediaToolsService is
+  stateless and has no dependencies, so the spy can delegate to a second real
+  instance.
+
+⏺ Update(nestjs-project/src/videos/processing/video-processing.service.integrati
+        on-spec.ts)
+  ⎿  Added 2 lines, removed 1 line
+      251        VideoProcessingStatus.PROCESSING,
+      252        'sample-2s.mp4',
+      253      );
+      254 -    const realProbe = mediaTools.probe.bind(mediaTools);      
+      254 +    // Stateless wrapper without dependencies: a second instan
+          +ce runs the real ffprobe.                                     
+      255 +    const realTools = new MediaToolsService();                
+      256      jest.spyOn(mediaTools, 'probe').mockImplementation(async (
+           input) => {
+      257        await videoRepository.update(
+      258          { id: video.id },
+
+⏺ Update(nestjs-project/src/videos/processing/video-processing.service.integrati
+        on-spec.ts)
+  ⎿  Added 1 line, removed 1 line
+      261            failure_reason: VideoFailureReason.PROCESSING_ERROR,
+      262          },
+      263        );
+      264 -      return realProbe(input);                                
+      264 +      return realTools.probe(input);                          
+      265      });
+      266 
+      267      await consumer.process(firstAttempt(video.id));
+
+⏺ Bash(docker compose exec -T nestjs-api sh -c 'npx eslint src/videos/processing
+      src/test/videos.ts src/worker; echo lint=$?; npx jest
+      src/videos/processing/video-proc…)
+  ⎿  (No output)
+
+⏺ Lint passes at 10/10, and I'm checking that the bull container leaves test
+  jobs alone by enqueuing one on the test prefix with no test worker running.
+  · summary
+
+⏺ Bash(docker compose exec -T nestjs-api node -e "
+      const { Queue } = require('bullmq');…)
+  ⎿  No matches found
+
+⏺ Confirmed: the job stays waiting on test:* and the container never logs it.
+  Progress + commit for SI-03.18.
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project && grep -n "### SI-03.18" -A 4
+      docs/phases/phase-03-videos/progress.md)
+  ⎿  (No output)
+
+⏺ Update(docs/phases/phase-03-videos/progress.md)
+  ⎿  Added 11 lines, removed 3 lines
+      175    - New files live in `src/videos/processing/`; the constants
+           (`MEDIA_TOOL_TIMEOUT_MS`, stderr markers, thumbnail offsets) a
+           re in `processing.constants.ts` and the error classes in `medi
+           a-tools.errors.ts` (the plan did not name these files).
+      176 
+      177  ### SI-03.18 — Consumer `process-video` (metadados e thumbnail
+           )
+      178 -- **Status:** pending                                         
+      179 -- **Tests:** —                                                
+      180 -- **Observations:** none                                      
+      178 +- **Status:** completed                                       
+      179 +- **Tests:** 16 passing (`video-processing.consumer.spec.ts` 6
+          +, `video-processing.service.integration-spec.ts` 10 with real 
+          +Postgres + MinIO + ffprobe/ffmpeg + BullMQ); `worker.module.in
+          +tegration-spec.ts` still 3/3 with the new providers; `tsc --no
+          +Emit` 0, eslint 0                                             
+      180 +- **Observations:**                                           
+      181 +  - The service throws classified errors and never decides abo
+          +ut retries. `InvalidMediaError` and the new `SourceObjectMissi
+          +ngError` (`video-processing.errors.ts`, raised when `headObjec
+          +t` returns `null`) are permanent. Everything else is transient
+          +. The consumer maps permanent errors to `markFailed(INVALID_ME
+          +DIA | PROCESSING_ERROR)` + `UnrecoverableError`. A transient e
+          +rror on the last attempt (`attemptsStarted >= opts.attempts ??
+          + 1`) gets `markFailed(PROCESSING_ERROR)` and is rethrown; befo
+          +re the last attempt it is only rethrown.                      
+      182 +  - Both writes (the `ready` update and `markFailed`) are cond
+          +itional on `processing_status IN ('processing','ready')`. The 
+          +integration test fails the row in the middle of the job (insid
+          +e a `probe` spy), and the job's result is discarded with a war
+          +ning: a `failed` row is never resurrected. `uploading`/`failed
+          +` rows are a logged no-op: no thumbnail is written and the row
+          + is unchanged. A re-run on `ready` overwrites the metadata, th
+          +e thumbnail and `processed_at` without error.                 
+      183 +  - The local frame goes to `os.tmpdir()/streamtube-thumbnail-
+          +<uuid>.jpg` and is removed in `finally`. The integration test 
+          +checks that no such file is left after success, after invalid 
+          +media and after a failed thumbnail upload (`putObject` spy rej
+          +ects → transient, row stays `processing`).                    
+      184 +  - Beyond the plan's table, one integration case runs a **rea
+          +l** BullMQ job (test prefix) for `not-a-video.mp4`: the job en
+          +ds `failed` with `attemptsMade = 1` and `failedReason` contain
+          +ing `INVALID_MEDIA`, proving that `UnrecoverableError` skips t
+          +he 2 remaining attempts. The 3 attempts with 5 s/10 s backoff 
+          +for a persistent transient error are covered by the consumer u
+          +nit test (decision per attempt) and `queue.module.integration-
+          +spec.ts` (job options). A real run would wait 15 s; the full p
+          +ipeline is SI-03.20.                                          
+      185 +  - The consumer logs `Consuming "video-processing"` on BullMQ
+          +'s `ready` event (blocking connection up) and logs each failed
+          + attempt. After `docker compose restart video-worker` the log 
+          +shows `queue prefix "bull"` followed by `Consuming "video-proc
+          +essing"`.                                                     
+      186 +  - **Test/container isolation checked:** with the container r
+          +unning, a job added to `test:video-processing` stays `waiting`
+          + after 6 s and never shows up in the `video-worker` log.      
+      187 +  - New test support `src/test/videos.ts` (`createChannel`, `i
+          +nsertVideo` in any state with the API's `{id}/source` key, `ag
+          +eVideo` to backdate `updated_at`), shared with SI-03.19. In th
+          +e "not resurrected" test, the `probe` spy delegates to a secon
+          +d `MediaToolsService` instance (stateless, no deps), because `
+          +bind` is typed `any` here and trips `no-unsafe-*`.            
+      188 +  - The pg `DeprecationWarning` ("client.query() when the clie
+          +nt is already executing a query") printed by this suite also a
+          +ppears in the existing `videos.service.integration-spec.ts`. I
+          +t comes from the TypeORM/pg stack, not this SI. Out of scope. 
+      189 
+      190  ### SI-03.19 — Varredura de manutenção (`video-maintenance`)
+      191  - **Status:** pending
+
+⏺ Bash(sed -i '' 's/^\*\*SIs:\*\* 17\/21 completed/**SIs:** 18\/21 completed/'
+      docs/phases/phase-03-videos/progress.md && git status --short && git add
+      nestjs-project/…)
+  ⎿  Updated docs/phases/phase-03-videos/progress.md +1 -1
+      1  # phase-03-videos — Progress
+      2 
+      3  **Status:** in_progress
+      4 -**SIs:** 17/21 completed                                        
+      4 +**SIs:** 18/21 completed                                        
+      5 
+      6  ### SI-03.1 — Infra: dependências, namespaces de configuração e
+         variáveis de ambiente
+      7  - **Status:** completed
+
+⏺ SI-03.18 committed (5ec90f8). On to SI-03.19. First a behavior check that
+  affects the tests: does upsertJobScheduler({ every }) run its first job right
+  away, or one interval later?
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project/nestjs-project && grep -n "version"
+      node_modules/bullmq/package.json | head…)
+  ⎿  (No output)
+
+⏺ Bash(sed -n 105,175p node_modules/bullmq/dist/cjs/classes/job-scheduler.js)
+  ⎿  (No output)
+
+⏺ With every set, the scheduler fires its first job immediately, so any test
+  booting the full WorkerModule will run one sweep; I'll account for that in the
+  worker module spec. Next I'm checking the multipart helpers for the
+  integration test. · summary
+
+⏺ Bash(sed -n 72,116p src/storage/storage.service.ts; sed -n 140,158p
+      src/storage/storage.service.ts; sed -n 1,40p src/queue/queue.constants.ts
+      | grep -n "export")
+  ⎿  (No output)
+
+⏺ Writing SI-03.19: constants, service, consumer, scheduler.
+
+⏺ Bash(python3 - <<'EOF'
+      p='src/queue/queue.constants.ts'; s=open(p).read()…)
+  ⎿  Updated nestjs-project/src/queue/queue.constants.ts +4
+       4  export const VIDEO_MAINTENANCE_QUEUE = 'video-maintenance';
+       5  export const PROCESS_VIDEO_JOB = 'process-video';
+       6 
+       7 +/** Job Scheduler of the maintenance sweep (declared only by th
+         +e worker). */                                                  
+       8 +export const VIDEO_MAINTENANCE_SCHEDULER_ID = 'video-maintenanc
+         +e-sweep';                                                      
+       9 +export const VIDEO_MAINTENANCE_SWEEP_JOB = 'sweep';            
+      10 +                                                               
+      11  export const QUEUE_NAMES = [
+      12    VIDEO_PROCESSING_QUEUE,
+      13    VIDEO_MAINTENANCE_QUEUE,
+  ⎿  Updated nestjs-project/src/videos/processing/processing.constants.ts
+     +3
+      33 
+      34  /** Prefix of the local frame file in `os.tmpdir()`, removed af
+          ter every job. */
+      35  export const THUMBNAIL_TMP_PREFIX = 'streamtube-thumbnail-';
+      36 +                                                               
+      37 +/** Most rows one sweep tick handles per category (stale upload
+         +s, orphans). */                                                
+      38 +export const SWEEP_BATCH_SIZE = 100;                           
+
+⏺ Write(nestjs-project/src/videos/processing/video-maintenance.service.ts)
+  ⎿  Wrote 175 lines to
+     nestjs-project/src/videos/processing/video-maintenance.service.ts
+       1 import { InjectQueue } from '@nestjs/bullmq';
+       2 import { Inject, Injectable, Logger } from '@nestjs/common';
+       3 import type { ConfigType } from '@nestjs/config';
+       4 import { InjectRepository } from '@nestjs/typeorm';
+       5 import type { Queue } from 'bullmq';
+       6 import { Raw, Repository } from 'typeorm';
+       7 import videoConfig from '../../config/video.config';
+       8 import {
+       9   PROCESS_VIDEO_JOB,
+      10   VIDEO_PROCESSING_QUEUE,
+     … +165 lines (ctrl+o to expand)
+
+⏺ Write(nestjs-project/src/videos/processing/video-maintenance.consumer.ts)
+  ⎿  Wrote 44 lines to
+     nestjs-project/src/videos/processing/video-maintenance.consumer.ts
+       1 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bu
+         llmq';
+       2 import { Logger } from '@nestjs/common';
+       3 import { VIDEO_MAINTENANCE_QUEUE } from '../../queue/queue.const
+         ants';
+       4 import {
+       5   VideoMaintenanceService,
+       6   type OrphanedProcessingSweepResult,
+       7   type StaleUploadsSweepResult,
+       8 } from './video-maintenance.service';
+     … +36 lines (ctrl+o to expand)
+
+⏺ Write(nestjs-project/src/videos/processing/video-maintenance.scheduler.ts)  ⎿  Wrote 43 lines to
+     nestjs-project/src/videos/processing/video-maintenance.scheduler.ts
+       1 import { InjectQueue } from '@nestjs/bullmq';
+       2 import {
+       3   Inject,
+       4   Injectable,
+       5   Logger,
+       6   type OnApplicationBootstrap,
+       7 } from '@nestjs/common';
+       8 import type { ConfigType } from '@nestjs/config';
+       9 import type { Queue } from 'bullmq';
+      10 import videoConfig from '../../config/video.config';
+     … +33 lines (ctrl+o to expand)
+
+⏺ Bash(python3 - <<'EOF'
+      p='src/worker/worker.module.ts'; s=open(p).read()…)
+  ⎿  Updated nestjs-project/src/worker/worker.module.ts +6
+      10  import { User } from '../users/entities/user.entity';
+      11  import { Video } from '../videos/entities/video.entity';
+      12  import { MediaToolsService } from '../videos/processing/media-t
+          ools.service';
+      13 +import { VideoMaintenanceConsumer } from '../videos/processing/
+         +video-maintenance.consumer';                                   
+      14 +import { VideoMaintenanceScheduler } from '../videos/processing
+         +/video-maintenance.scheduler';                                 
+      15 +import { VideoMaintenanceService } from '../videos/processing/v
+         +ideo-maintenance.service';                                     
+      16  import { VideoProcessingConsumer } from '../videos/processing/v
+          ideo-processing.consumer';
+      17  import { VideoProcessingService } from '../videos/processing/vi
+          deo-processing.service';
+      18 
+     ...
+      40      MediaToolsService,
+      41      VideoProcessingService,
+      42      VideoProcessingConsumer,
+      43 +    VideoMaintenanceService,                                   
+      44 +    VideoMaintenanceConsumer,                                  
+      45 +    VideoMaintenanceScheduler,                                 
+      46    ],
+      47  })
+      48  export class WorkerModule implements OnApplicationShutdown {
+
+⏺ Now the three SI-03.19 test files. Unit test first (job-state decision and
+  per-row error isolation).
+
+⏺ Write(nestjs-project/src/videos/processing/video-maintenance.service.spec.ts)
+  ⎿  Wrote 169 lines to
+     nestjs-project/src/videos/processing/video-maintenance.service.spec.ts
+       1 import { getQueueToken } from '@nestjs/bullmq';
+       2 import { Test } from '@nestjs/testing';
+       3 import { getRepositoryToken } from '@nestjs/typeorm';
+       4 import videoConfig from '../../config/video.config';
+       5 import {
+       6   PROCESS_VIDEO_JOB,
+       7   VIDEO_PROCESSING_QUEUE,
+       8   processVideoJobOptions,
+       9 } from '../../queue/queue.constants';
+      10 import { StorageService } from '../../storage/storage.service';
+     … +159 lines (ctrl+o to expand)
+
+⏺ Now the maintenance integration spec (Postgres + MinIO + Redis). It uses a
+  real multipart upload and a real failed BullMQ job, created by a throwaway
+  Worker that throws UnrecoverableError.
+
+⏺ Write(nestjs-project/src/videos/processing/video-maintenance.service.integrati
+       on-spec.ts)
+  ⎿  Wrote 264 lines to nestjs-project/src/videos/processing/video-maintena
+     nce.service.integration-spec.ts
+       1 import { getQueueToken } from '@nestjs/bullmq';
+       2 import { ConfigModule, type ConfigType } from '@nestjs/config';
+       3 import { Test, type TestingModule } from '@nestjs/testing';
+       4 import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeo
+         rm';
+       5 import { UnrecoverableError, Worker, type Queue } from 'bullmq';
+       6 import { DataSource, Repository } from 'typeorm';
+       7 import { RefreshToken } from '../../auth/entities/refresh-token.
+         entity';
+       8 import { VerificationToken } from '../../auth/entities/verificat
+     … +257 lines (~9 KB) (ctrl+o to expand)
+
+⏺ Write(nestjs-project/src/videos/processing/video-maintenance.scheduler.integra
+       tion-spec.ts)
+  ⎿  Wrote 67 lines to nestjs-project/src/videos/processing/video-maintenan
+     ce.scheduler.integration-spec.ts
+       1 import { getQueueToken } from '@nestjs/bullmq';
+       2 import { ConfigModule, type ConfigType } from '@nestjs/config';
+       3 import { Test, type TestingModule } from '@nestjs/testing';
+       4 import type { Queue } from 'bullmq';
+       5 import queueConfig from '../../config/queue.config';
+       6 import videoConfig from '../../config/video.config';
+       7 import {
+       8   VIDEO_MAINTENANCE_QUEUE,
+       9   VIDEO_MAINTENANCE_SCHEDULER_ID,
+      10   VIDEO_MAINTENANCE_SWEEP_JOB,
+     … +57 lines (ctrl+o to expand)
+
+⏺ Simplifying that scheduler test: clean the queue in beforeAll with a plain
+  queue-only module, then boot exactly two replicas.
+
+⏺ Write(nestjs-project/src/videos/processing/video-maintenance.scheduler.integra
+       tion-spec.ts)
+  ⎿  Added 18 lines, removed 17 lines
+      13  import { obliterateTestQueues } from '../../test/queues';
+      14  import { VideoMaintenanceScheduler } from './video-maintenance.
+          scheduler';
+      15 
+      16 -/** One worker "replica": the scheduler provider over the real 
+         -queue, booted. */                                              
+      17 -async function bootReplica(): Promise<TestingModule> {         
+      16 +/** The queue module alone, optionally with the scheduler (one 
+         +worker "replica"). */                                          
+      17 +async function bootModule(withScheduler: boolean): Promise<Test
+         +ingModule> {                                                   
+      18    const moduleRef = await Test.createTestingModule({
+      19      imports: [
+      20        ConfigModule.forRoot({
+     ...
+      23        }),
+      24        QueueModule,
+      25      ],
+      26 -    providers: [VideoMaintenanceScheduler],                    
+      26 +    providers: withScheduler ? [VideoMaintenanceScheduler] : []
+         +,                                                              
+      27    }).compile();
+      28    await moduleRef.init();
+      29    return moduleRef;
+      30  }
+      31 
+      32  describe('VideoMaintenanceScheduler (integration, Redis)', () =
+          > {
+      33 +  let observer: TestingModule;                                 
+      34 +  let queue: Queue;                                            
+      35    const replicas: TestingModule[] = [];
+      36 
+      37 +  beforeAll(async () => {                                      
+      38 +    observer = await bootModule(false);                        
+      39 +    queue = observer.get<Queue>(getQueueToken(VIDEO_MAINTENANCE
+         +_QUEUE));                                                      
+      40 +    await queue.obliterate({ force: true });                   
+      41 +  });                                                          
+      42 +                                                               
+      43    afterAll(async () => {
+      36 -    await obliterateTestQueues(replicas[0]);                   
+      44      for (const replica of replicas) await replica.close();
+      45 +    await obliterateTestQueues(observer);                      
+      46 +    await observer.close();                                    
+      47    });
+      48 
+      49    it('should keep a single video-maintenance-sweep scheduler ac
+          ross two bootstraps', async () => {
+      41 -    replicas.push(await bootReplica());                        
+      42 -    const queue = replicas[0].get<Queue>(                      
+      43 -      getQueueToken(VIDEO_MAINTENANCE_QUEUE),                  
+      44 -    );                                                         
+      45 -    await queue.obliterate({ force: true });                   
+      46 -    const { sweepIntervalMs } = replicas[0].get<               
+      47 -      ConfigType<typeof videoConfig>                           
+      48 -    >(videoConfig.KEY);                                        
+      50 +    replicas.push(await bootModule(true));                     
+      51 +    replicas.push(await bootModule(true));                     
+      52 
+      50 -    // First bootstrap ran before the obliterate above: bootstr
+         -ap twice more.                                                 
+      51 -    await replicas[0].get(VideoMaintenanceScheduler).onApplicat
+         -ionBootstrap();                                                
+      52 -    replicas.push(await bootReplica());                        
+      53 -                                                               
+      53 +    const { sweepIntervalMs } = observer.get<ConfigType<typeof 
+         +videoConfig>>(                                                 
+      54 +      videoConfig.KEY,                                         
+      55 +    );                                                         
+      56      const schedulers = await queue.getJobSchedulers();
+      57      expect(schedulers).toHaveLength(1);
+      58      expect(schedulers[0]).toMatchObject({
+     ...
+      60        name: VIDEO_MAINTENANCE_SWEEP_JOB,
+      61        every: sweepIntervalMs,
+      62      });
+      61 -    await expect(queue.getJobSchedulersCount()).resolves.toBe(1
+         -);                                                             
+      63      const pending = await queue.getJobs(['waiting', 'delayed',
+          'prioritized']);
+      64      expect(pending.map((job) => job.name)).toEqual([
+      65        VIDEO_MAINTENANCE_SWEEP_JOB,
+
+⏺ Next is the worker module integration spec: booting WorkerModule runs a
+  scheduler sweep against the shared DB, so I'm clearing the tables beforehand
+  and asserting the sweep finishes before teardown. · summary
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Bash(python3 - <<'EOF'
+      p='src/worker/worker.module.integration-spec.ts'; s=open(p).read()…)
+  ⎿  Updated nestjs-project/src/videos/processing/video-maintenance.service
+     .integration-spec.ts +1 -3
+      158        const untouched = await videoRepository.findOneByOrFail(
+           {
+      159          id: recent.id,
+      160        });
+      161 -      expect(untouched.processing_status).toBe(               
+      162 -        VideoProcessingStatus.UPLOADING,                      
+      163 -      );                                                      
+      161 +      expect(untouched.processing_status).toBe(VideoProcessing
+          +Status.UPLOADING);                                            
+      162        await expect(
+      163          storage.listAllParts(recent.source_key, recent.upload_
+           id!),
+      164        ).resolves.toEqual([]);
+  ⎿  Updated nestjs-project/src/worker/worker.module.integration-spec.ts
+     +31
+       7  import { Channel } from '../channels/entities/channel.entity';
+       8  import {
+       9    VIDEO_MAINTENANCE_QUEUE,
+      10 +  VIDEO_MAINTENANCE_SCHEDULER_ID,                              
+      11    VIDEO_PROCESSING_QUEUE,
+      12  } from '../queue/queue.constants';
+      13  import { StorageService } from '../storage/storage.service';
+      14 +import { cleanAllTables } from '../test/create-test-data-source
+         +';                                                             
+      15  import { obliterateTestQueues } from '../test/queues';
+      16  import { User } from '../users/entities/user.entity';
+      17  import { Video } from '../videos/entities/video.entity';
+      18 +import type { MaintenanceSweepResult } from '../videos/processi
+         +ng/video-maintenance.consumer';                                
+      19  import { WorkerModule } from './worker.module';
+      20 
+      21 +const FIRST_SWEEP_TIMEOUT_MS = 10000;                          
+      22 +                                                               
+      23  describe('WorkerModule (integration, Postgres + Redis)', () =>
+          {
+      24    let moduleRef: TestingModule;
+      25 
+     ...
+      27      moduleRef = await Test.createTestingModule({
+      28        imports: [WorkerModule],
+      29      }).compile();
+      30 +    // Bootstrapping upserts the maintenance scheduler, whose f
+         +irst sweep runs                                                
+      31 +    // at once against the shared DB: start it from empty table
+         +s.                                                             
+      32 +    await cleanAllTables(moduleRef.get(DataSource));           
+      33      await moduleRef.init();
+      34    }, 30000);
+      35 
+     ...
+       76      expect(moduleNames).not.toContain('ThrottlerModule');
+       77      expect(moduleNames).not.toContain('VideosModule');
+       78    });
+       79 +                                                              
+       80 +  it('should declare the maintenance scheduler and run its fir
+          +st sweep on bootstrap', async () => {                         
+       81 +    const queue = moduleRef.get<Queue>(getQueueToken(VIDEO_MAI
+          +NTENANCE_QUEUE), {                                            
+       82 +      strict: false,                                          
+       83 +    });                                                       
+       84 +                                                              
+       85 +    const deadline = Date.now() + FIRST_SWEEP_TIMEOUT_MS;     
+       86 +    let completed = await queue.getJobs(['completed']);       
+       87 +    while (completed.length === 0 && Date.now() < deadline) { 
+     … +15 lines (ctrl+o to expand)
+
+⏺ 19/19. The ERROR lines are the unit tests' deliberate per-row failures. I'll
+  silence them via a Logger.prototype.error spy, which also lets the tests
+  assert that the failing row is logged.
+
+⏺ Bash(python3 - <<'EOF'
+      p='src/videos/processing/video-maintenance.service.spec.ts';
+      s=open(p).read()…)
+  ⎿  Updated
+     nestjs-project/src/videos/processing/video-maintenance.service.spec.ts
+     +17
+      1  import { getQueueToken } from '@nestjs/bullmq';
+      2 +import { Logger } from '@nestjs/common';                        
+      3  import { Test } from '@nestjs/testing';
+      4  import { getRepositoryToken } from '@nestjs/typeorm';
+      5  import videoConfig from '../../config/video.config';
+     ...
+      32 
+      33  describe('VideoMaintenanceService', () => {
+      34    let service: VideoMaintenanceService;
+      35 +  let errorLog: jest.SpyInstance;                              
+      36    const videoRepository = { find: jest.fn(), update: jest.fn()
+          };
+      37    const storageService = { abortMultipartUpload: jest.fn() };
+      38    const processingQueue = { getJob: jest.fn(), add: jest.fn() }
+          ;
+      39 
+      40 +  afterEach(() => {                                            
+      41 +    errorLog.mockRestore();                                    
+      42 +  });                                                          
+      43 +                                                               
+      44    beforeEach(async () => {
+      45      jest.resetAllMocks();
+      46 +    errorLog = jest                                            
+      47 +      .spyOn(Logger.prototype, 'error')                        
+      48 +      .mockImplementation(() => undefined);                    
+      49      videoRepository.update.mockResolvedValue({ affected: 1 });
+      50      storageService.abortMultipartUpload.mockResolvedValue(undef
+          ined);
+      51      processingQueue.add.mockResolvedValue({});
+     ...
+      129          processVideoJobOptions('v2'),
+      130        );
+      131        expect(result).toEqual({ requeued: 1, failed: 0, errors:
+            1 });
+      132 +      expect(errorLog).toHaveBeenCalledWith(                  
+      133 +        expect.stringContaining('video v1: Redis connection lo
+          +st'),                                                         
+      134 +        expect.any(String),                                   
+      135 +      );                                                      
+      136      });
+      137    });
+      138 
+     ...
+      177 
+      178        expect(storageService.abortMultipartUpload).toHaveBeenCa
+           lledTimes(2);
+      179        expect(result).toEqual({ abandoned: 1, errors: 1 });
+      180 +      expect(errorLog).toHaveBeenCalledWith(                  
+      181 +        expect.stringContaining('video v1: storage unavailable
+          +'),                                                           
+     … +5 lines (ctrl+o to expand)
+
+⏺ Clean (the grep hit is a test name that contains "ERROR"). Restarting the
+  container twice to check the scheduler in the real bull prefix: a single
+  scheduler, a first sweep, stable status.
+
+⏺ Bash(docker compose restart video-worker >/dev/null 2>&1; sleep 15; docker
+      compose restart video-worker >/dev/null 2>&1; sleep 15; docker compose
+      logs video-worker -…)
+  ⎿  (No output)
+
+⏺ The scheduler is idempotent: the restart kept the existing schedule without
+  sweeping again. Completed sweep jobs will keep piling up in Redis (about 96 a
+  day) because the template only sets attempts, so I'm logging that as a
+  follow-up and committing the progress now. · summary
+
+⏺ Update(docs/phases/phase-03-videos/progress.md)
+  ⎿  Added 11 lines, removed 3 lines
+      188    - The pg `DeprecationWarning` ("client.query() when the clie
+           nt is already executing a query") printed by this suite also a
+           ppears in the existing `videos.service.integration-spec.ts`. I
+           t comes from the TypeORM/pg stack, not this SI. Out of scope.
+      189 
+      190  ### SI-03.19 — Varredura de manutenção (`video-maintenance`)
+      191 -- **Status:** pending                                         
+      192 -- **Tests:** —                                                
+      193 -- **Observations:** none                                      
+      191 +- **Status:** completed                                       
+      192 +- **Tests:** 15 new, passing: `video-maintenance.service.spec.
+          +ts` 9, `video-maintenance.service.integration-spec.ts` 5 (Post
+          +gres + MinIO + Redis, with real multipart uploads and a real B
+          +ullMQ `failed` job), `video-maintenance.scheduler.integration-
+          +spec.ts` 1; `worker.module.integration-spec.ts` +1 (4 total); 
+          +`tsc --noEmit` 0, eslint 0                                    
+      193 +- **Observations:**                                           
+      194 +  - The inactivity filter is `updated_at < now() - make_interv
+          +al(secs => :s)` through `Raw` inside `repository.find` (oldest
+          + first, `take: 100`). It compares with the **DB clock** that w
+          +rites `updated_at`, not the Node clock, and keeps `find` easy 
+          +to mock in the unit test.                                     
+      195 +  - Stale uploads: conditional claim (`WHERE id AND processing
+          +_status = 'uploading'`) → `failed`/`UPLOAD_ABANDONED`/`upload_
+          +id = null`. `abortMultipartUpload` with the **previous** `uplo
+          +ad_id` runs only when the claim affected 1 row. The integratio
+          +n test simulates the lost race: `find` returns the `uploading`
+          + snapshot while the row has already moved to `processing`. The
+          + multipart survives (`ListParts` still answers) and the row is
+          + untouched.                                                   
+      196 +  - Orphaned processing: `getJob(videoId)` missing → `add(proc
+          +ess-video, { videoId }, processVideoJobOptions(videoId))` (int
+          +egration checks `jobId = videoId`, attempts 3, exponential 5 s
+          +). `failed` → conditional update to `failed`/`PROCESSING_ERROR
+          +`. Every other state → left alone. The failed job in the integ
+          +ration test comes from a throwaway BullMQ `Worker` that throws
+          + `UnrecoverableError`. Row errors are logged (`Logger.error`, 
+          +asserted in the unit test) and counted, and the batch goes on 
+          +(background-job exception in `nestjs-services.md`).           
+      197 +  - Sweeps return counts. The consumer logs `Sweep done: N aba
+          +ndoned upload(s), N re-enqueued, N failed, N row error(s)` and
+          + returns them as the job's `returnvalue`.                     
+      198 +  - **`every` runs the first job at once** (bullmq 6.7.10 `job
+          +-scheduler.js`: "Job will run immediately anyway"). Consequenc
+          +es: (1) `worker.module.integration-spec.ts` now runs `cleanAll
+          +Tables` between `compile()` and `init()`, waits for that first
+          + sweep and asserts its `returnvalue` is all zeros. This keeps 
+          +the sweep deterministic and makes sure no sweep job is active 
+          +during teardown. (2) In the container, the first bootstrap swe
+          +pt at once; a later restart (re-upsert) kept the existing sche
+          +dule (`next` unchanged, a single delayed job) and did not swee
+          +p again.                                                      
+      199 +  - Container check (prefix `bull`), after two `docker compose
+          + restart video-worker`: `getJobSchedulers()` → one `video-main
+          +tenance-sweep` with `every: 900000`; log `Job Scheduler "video
+          +-maintenance-sweep" every 900000 ms`, `Consuming "video-proces
+          +sing"`, `Consuming "video-maintenance"`, `Sweep done: 0 …`; `R
+          +estartCount=0`, `running`.                                    
+      200 +  - **Follow-up (not changed, it is the plan's contract):** th
+          +e scheduler template is `{ attempts: 1 }` as written, so **com
+          +pleted sweep jobs stay in Redis** (`completed: 1` after the fi
+          +rst tick). That is about 96 hashes a day under `noeviction`. S
+          +uggest adding `removeOnComplete: true` + `removeOnFail: { coun
+          +t: N }` to the template via `/plan-build` append-mode (correct
+          +ive SI), or in SI-03.21 if the leader prefers.                
+      201 +  - Known residual, unchanged: the container sweep (prefix `bu
+          +ll`, every 15 min) reads the same Postgres as the tests. Aged 
+          +rows only exist for the few milliseconds of a test, and no int
+          +ermittent failure showed up in these runs.                    
+      202 
+      203  ### SI-03.20 — E2E do pipeline completo (upload → processament
+           o → streaming/download)
+      204  - **Status:** pending
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project && sed -i '' 's/^\*\*SIs:\*\* 18\/21 completed/**SIs:** 19\/21
+      completed/' d…)
+  ⎿  Updated docs/phases/phase-03-videos/progress.md +1 -1
+      1  # phase-03-videos — Progress
+      2 
+      3  **Status:** in_progress
+      4 -**SIs:** 18/21 completed                                        
+      4 +**SIs:** 19/21 completed                                        
+      5 
+      6  ### SI-03.1 — Infra: dependências, namespaces de configuração e
+         variáveis de ambiente
+      7  - **Status:** completed
+
+⏺ All four SIs are committed, and I'm declining the prompt to continue to
+  SI-03.20 per the brief. Next I'm running the end-of-block gate in the
+  container: unit and integration suites, e2e, tsc, and lint. · summary
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project/nestjs-project && docker compose exec -T nestjs-api sh -c 'npm
+      test -- --run…)
+  ⎿  (No output)
+
+⏺ All green. npm run lint runs with --fix, so I'm checking that it changed
+  nothing, plus the final container state, the test buckets/queues, and that the
+  container stayed out of the test run.
+
+⏺ Bash(git status --short; docker compose ps --format '{{.Service}} |
+      {{.Status}}'; docker inspect nestjs-project-video-worker-1 --format
+      'video-worker restarts={{.Res…)
+  ⎿  (No output)
+
+⏺ Bash(docker compose exec -T redis redis-cli --scan --pattern 'test:*')
+  ⎿  (No output)
+
+⏺ Only the two empty meta keys in the test queues are left, and I'm recording
+  their block numbers in progress.md and committing so the tree is clean for the
+  next /implement. · summary
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project && python3 - <<'EOF'
+      p='docs/phases/phase-03-videos/progress.md'; s=open(p).…)
+  ⎿  Updated docs/phases/phase-03-videos/progress.md +1 -1
+      189 
+      190  ### SI-03.19 — Varredura de manutenção (`video-maintenance`)
+      191  - **Status:** completed
+      192 -- **Tests:** 15 new, passing: `video-maintenance.service.spec.
+          -ts` 9, `video-maintenance.service.integration-spec.ts` 5 (Post
+          -gres + MinIO + Redis, with real multipart uploads and a real B
+          -ullMQ `failed` job), `video-maintenance.scheduler.integration-
+          -spec.ts` 1; `worker.module.integration-spec.ts` +1 (4 total); 
+          -`tsc --noEmit` 0, eslint 0                                    
+      192 +- **Tests:** 15 new, passing: `video-maintenance.service.spec.
+          +ts` 9, `video-maintenance.service.integration-spec.ts` 5 (Post
+          +gres + MinIO + Redis, with real multipart uploads and a real B
+          +ullMQ `failed` job), `video-maintenance.scheduler.integration-
+          +spec.ts` 1; `worker.module.integration-spec.ts` +1 (4 total); 
+          +`tsc --noEmit` 0, eslint 0. End of block W4.5: full `npm test 
+          +-- --runInBand` 350/350 (45 suites), full `npm run test:e2e` 9
+          +5/95 (10 suites), `tsc --noEmit` 0, `npm run lint` 0 (no files
+          + changed by `--fix`); `videos-test`/`thumbnails-test` empty (0
+          + objects, 0 incomplete uploads); only the two empty `test:*:me
+          +ta` queue keys remain in Redis; `video-worker` `running`, `Res
+          +tartCount=0`, no `process-video` activity in its log during th
+          +e test run                                                    
+      193  - **Observations:**
+      194    - The inactivity filter is `updated_at < now() - make_interv
+           al(secs => :s)` through `Raw` inside `repository.find` (oldest
+            first, `take: 100`). It compares with the **DB clock** that w
+           rites `updated_at`, not the Node clock, and keeps `find` easy
+           to mock in the unit test.
+      195    - Stale uploads: conditional claim (`WHERE id AND processing
+           _status = 'uploading'`) → `failed`/`UPLOAD_ABANDONED`/`upload_
+           id = null`. `abortMultipartUpload` with the **previous** `uplo
+           ad_id` runs only when the claim affected 1 row. The integratio
+           n test simulates the lost race: `find` returns the `uploading`
+            snapshot while the row has already moved to `processing`. The
+            multipart survives (`ListParts` still answers) and the row is
+            untouched.
+⏺ Bloco W4.5 pronto: SI-03.16–03.19 implementados e commitados, gate de fim de
+  bloco todo verde. Em "Seguir para SI-03.20?" a resposta é não, então parei.
+
+  Gate (tudo no container):
+  - Unit + integration: 350/350 (45 suites).
+  - e2e: 95/95 (10 suites).
+  - npx tsc --noEmit = 0; npm run lint = 0, e o --fix não alterou nenhum
+    arquivo.
+  - docker compose ps: o video-worker está running, com 0 restarts,
+    unless-stopped e sem porta publicada.
+  - O log mostra o worker conectado: prefixo bull, os dois consumers ativos e a
+    primeira varredura feita.
+  - Os buckets -test estão vazios. No Redis sobraram só as duas chaves meta
+    vazias das filas test.
+
+  O container não consome jobs dos testes. Com o container no ar, um job
+  adicionado em test:video-processing seguia waiting depois de 6 s e nunca
+  apareceu no log do worker. Também não houve nenhuma atividade de processamento
+  no log dele durante a suíte completa.
+
+  Desvios e achados que você deve revisar:
+  - exec no start:worker: sem ele, o docker compose stop matava o node sem rodar
+    os shutdown hooks. O sh -c do npm run não repassa o SIGTERM. Agora o hook
+    roda e o log mostra "stopped (SIGTERM)" em ~1 s. O npm ainda escreve npm
+    error signal SIGTERM e o container sai com código 1. Isso é cosmético: o
+    Nest reenvia o sinal a si mesmo depois dos hooks.
+  - every dispara a primeira varredura na hora em que o scheduler é criado. Por
+    isso o worker.module.integration-spec agora limpa as tabelas antes do init()
+    e espera essa varredura terminar. Reiniciar o worker mantém um único
+    scheduler e não varre de novo.
+  - Varredura concluída acumula no Redis: o template do plano é só { attempts: 1
+    }, então cada job concluído fica guardado, cerca de 96 por dia com
+    noeviction. Não alterei o contrato. Sugiro removeOnComplete num SI corretivo
+    ou no SI-03.21.
+  - Teste além do plano no SI-03.18: um job real do BullMQ com o vídeo inválido
+    termina failed depois de 1 tentativa, o que prova o UnrecoverableError. As 3
+    tentativas com backoff de um erro transitório ficaram só no unit, porque o
+    caso real espera 15 s.
+  - AC de down -v && up -d: não rodei, porque apaga os volumes compartilhados de
+    dev. Fica para o gate do líder ou a DoD da E5. A política de restart foi
+    verificada matando o node: o container voltou sozinho.
+
+  O teste intermitente pela varredura do container nos dados de teste não
+  apareceu em nenhuma rodada.
+
+  O TaskCreate não está disponível nesta sessão, então o acompanhamento ficou só
+  no progress.md.
+
+  Resumo de 5 linhas:
+  1. Commits: 0212efe (test), b69e264 (SI-03.16), 738148e (SI-03.17), 5ec90f8
+     (SI-03.18), 37e420b (SI-03.19), 4d212cb (números do bloco no progress).
+     Nada de push.
+  2. Testes: 350/350 unit+int, 95/95 e2e, tsc 0, lint 0. O bloco adicionou 52
+     testes; worker.module subiu de 3 para 4.
+  3. Desvios: exec no start:worker, flags -v error -nostdin -y no ffmpeg,
+     configModuleOptions compartilhado, helper src/test/videos.ts, nomes de
+     arquivo de erros e constantes que o plano não definia.
+  4. Pendências para o líder: removeOnComplete no template do scheduler, down -v
+     no gate e o DeprecationWarning do pg, que já existia e fica fora do
+     escopo.
+  5. Próximo: W4.6 (SI-03.20 e2e do pipeline + SI-03.21 docs). Árvore limpa,
+     progress.md em 19/21.

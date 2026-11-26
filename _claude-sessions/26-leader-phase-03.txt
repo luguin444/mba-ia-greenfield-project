@@ -1,0 +1,1643 @@
+
+✻ Conversation compacted (ctrl+o for history)
+
+
+⏺ A W4.4 passou no portão. Branch publicada e PR #4 atualizado.
+
+  O que a revisão de segurança concluiu: o revisor não achou nenhum caminho para
+  chegar a um vídeo em rascunho sem ser o dono. Também não achou injeção de
+  header no download, e o helper de limpeza não consegue tocar os buckets de dev
+  (só aceita nomes terminados em -test). Vieram 10 pontos menores:
+  - Aceitos como estão:
+    - a mensagem do 409 no download ("not ready for playback") é a que está no
+      Error Catalog;
+    - o bearer minúsculo já era tratado assim na Fase 02;
+    - a diferença de tempo de uma consulta ao banco não tem impacto prático.
+  - Vão para um commit de testes no início da W4.5:
+    - comparar o Content-Disposition por igualdade total;
+    - conferir o corpo completo do 409 em uploading;
+    - garantir no teardown que o app fecha mesmo se a limpeza falhar.
+
+  Brief da W4.5
+
+  Agora entra o worker. Abra uma sessão nova, cole o texto abaixo e digite
+  /implement phase-03-videos.
+
+  Fase 03, branch `feature/phase-03-videos`, bloco W4.5: implementar SOMENTE
+  SI-03.16 (WorkerModule + entrypoint + serviço video-worker), SI-03.17 (wrapper
+  ffprobe/ffmpeg + fixtures), SI-03.18 (consumer process-video) e SI-03.19
+  (varredura de manutenção). Plano mestre:
+  `~/.claude/plans/tenho-o-seguinte-trabalho-indexed-canyon.md` (Etapa 4).
+  W4.1–W4.4 fecharam SI-03.1–03.15.
+
+  ANTES do SI-03.16, um commit pequeno de testes pedido pelo líder (registrar
+  nas Observations do progress.md):
+  - `test/videos-download.e2e-spec.ts`: no caminho feliz, comparar o
+  `Content-Disposition` por igualdade total (como já faz
+  `videos.service.integration-spec.ts`), não só `startsWith`/`toContain`.
+  - `test/videos-playback.e2e-spec.ts`: o 409 do vídeo `uploading` com `toEqual`
+  do corpo completo (igual ao caso `processing`).
+  - `test/support/videos-e2e.ts`: `closeVideosE2eApp` com `try/finally`, para o
+  `app.close()` rodar mesmo se a limpeza de fila/buckets lançar.
+  - Commit: `test(videos): tighten playback/download assertions and e2e
+  teardown`.
+
+  Regras:
+  - context7 antes de usar lib (`@nestjs/bullmq@11`: `@Processor` +
+  `WorkerHost`, `UnrecoverableError` e `upsertJobScheduler` do bullmq 6). Skills
+  `nestjs-best-practices`, `typeorm` e `testing-guide-nestjs-project`.
+  - Todo npm/test/tsc/lint dentro do container. Nunca `localhost` entre
+  serviços. Não mockar o que roda no Compose: integração com Postgres, MinIO,
+  Redis e ffprobe/ffmpeg reais (a exceção prevista é o unit do
+  `MediaToolsService` com `execFile` mockado).
+  - SI-03.16: o worker não tem HTTP, controller, AuthModule nem throttler;
+  `forFeature([Video, Channel, User])`; serviço `video-worker` com `restart:
+  unless-stopped`, mesma imagem/volume da API e `QUEUE_PREFIX` de produção
+  (`bull`). Os testes continuam no prefixo `test` (setup-test-env), então o
+  container NÃO pode consumir jobs dos testes: confira isso. Depois de subir,
+  `docker compose ps` com o `video-worker` estável (sem restart em loop) e o log
+  mostrando o worker conectado.
+  - SI-03.17: `execFile` sem shell, timeout de 120 s em `probe` E em
+  `extractFrame`; fixtures `sample-2s.mp4` e `not-a-video.mp4` geradas uma vez e
+  versionadas (pequenas).
+  - SI-03.18: erro permanente → `markFailed` + `UnrecoverableError`; transitório
+  → rethrow (3 tentativas, backoff exponencial); falha na última tentativa →
+  `PROCESSING_ERROR`. Linha `failed` nunca é ressuscitada; reprocessar `ready`
+  sobrescreve sem erro.
+  - SI-03.19: o scheduler é declarado SÓ no worker (`upsertJobScheduler`,
+  idempotente em dois bootstraps). Risco residual conhecido: o Postgres é
+  compartilhado entre dev e testes, e a varredura do container (a cada 15 min)
+  poderia pegar uma linha de teste envelhecida artificialmente. Se aparecer
+  teste intermitente por isso, PARE e me traga, sem gambiarra.
+  - Se algo do plano não funcionar como escrito, PARE e me traga antes de
+  improvisar.
+
+  Ritual por SI: implementar → testes do SI verdes → atualizar `progress.md` →
+  commit local `feat(videos): SI-03.N <título curto>` (código + progress.md,
+  `git add` explícito, sem Co-Authored-By, sem push).
+  Ao chegar em "Seguir para SI-03.20?", responda NÃO e pare. Antes de parar:
+  suíte completa (unit+integration e e2e), `npx tsc --noEmit` e `npm run lint`,
+  tudo no container; `docker compose ps` com o video-worker estável; reportar os
+  números.
+  No fim: resumo de 5 linhas (commits, testes, desvios do plano, pendências). O
+  export eu peço separado.
+
+  Ele vai perguntar "Seguir para SI-X?":
+  - Depois do commit de testes e do SI-03.16, SI-03.17 e SI-03.18, responda sim.
+  - Depois do SI-03.19, responda não.
+
+  Se o contexto passar de uns 60%, pode dar /clear e retomar com o mesmo brief.
+  No fim, rode /export 24-implement-w4-5-phase-03.txt.
+
+❯ resumo
+  """
+  Bloco W4.5 pronto: SI-03.16–03.19 implementados e commitados, gate de fim de
+  bloco todo verde. Em "Seguir para SI-03.20?" a resposta é não, então parei.
+
+  Gate (tudo no container):
+
+  Unit + integration: 350/350 (45 suites).
+  e2e: 95/95 (10 suites).
+  npx tsc --noEmit = 0; npm run lint = 0, e o --fix não alterou nenhum arquivo.
+  docker compose ps: o video-worker está running, com 0 restarts,
+  unless-stopped e sem porta publicada.
+  O log mostra o worker conectado: prefixo bull, os dois consumers ativos e a
+  primeira varredura feita.
+  Os buckets -test estão vazios. No Redis sobraram só as duas chaves meta
+  vazias das filas test.
+  O container não consome jobs dos testes. Com o container no ar, um job
+  adicionado em test:video-processing seguia waiting depois de 6 s e nunca
+  apareceu no log do worker. Também não houve nenhuma atividade de
+  processamento no log dele durante a suíte completa.
+
+  Desvios e achados que você deve revisar:
+
+  exec no start:worker: sem ele, o docker compose stop matava o node sem rodar
+  os shutdown hooks. O sh -c do npm run não repassa o SIGTERM. Agora o hook
+  roda e o log mostra "stopped (SIGTERM)" em ~1 s. O npm ainda escreve npm
+  error signal SIGTERM e o container sai com código 1. Isso é cosmético: o Nest
+  reenvia o sinal a si mesmo depois dos hooks.
+  every dispara a primeira varredura na hora em que o scheduler é criado. Por
+  isso o worker.module.integration-spec agora limpa as tabelas antes do init()
+  e espera essa varredura terminar. Reiniciar o worker mantém um único
+  scheduler e não varre de novo.
+  Varredura concluída acumula no Redis: o template do plano é só { attempts: 1
+  }, então cada job concluído fica guardado, cerca de 96 por dia com
+  noeviction. Não alterei o contrato. Sugiro removeOnComplete num SI corretivo
+  ou no SI-03.21.
+  Teste além do plano no SI-03.18: um job real do BullMQ com o vídeo inválido
+  termina failed depois de 1 tentativa, o que prova o UnrecoverableError. As 3
+  tentativas com backoff de um erro transitório ficaram só no unit, porque o
+  caso real espera 15 s.
+  AC de down -v && up -d: não rodei, porque apaga os volumes compartilhados de
+  dev. Fica para o gate do líder ou a DoD da E5. A política de restart foi
+  verificada matando o node: o container voltou sozinho.
+  O teste intermitente pela varredura do container nos dados de teste não
+  apareceu em nenhuma rodada.
+
+  O TaskCreate não está disponível nesta sessão, então o acompanhamento ficou
+  só no progress.md.
+
+  Resumo de 5 linhas:
+
+  Commits: 0212efe (test), b69e264 (SI-03.16), 738148e (SI-03.17), 5ec90f8
+  (SI-03.18), 37e420b (SI-03.19), 4d212cb (números do bloco no progress). Nada
+  de push.
+  Testes: 350/350 unit+int, 95/95 e2e, tsc 0, lint 0. O bloco adicionou 52
+  testes; worker.module subiu de 3 para 4.
+  Desvios: exec no start:worker, flags -v error -nostdin -y no ffmpeg,
+  configModuleOptions compartilhado, helper src/test/videos.ts, nomes de
+  arquivo de erros e constantes que o plano não definia.
+  Pendências para o líder: removeOnComplete no template do scheduler, down -v
+  no gate e o DeprecationWarning do pg, que já existia e fica fora do escopo.
+  Próximo: W4.6 (SI-03.20 e2e do pipeline + SI-03.21 docs). Árvore limpa,
+  progress.md em 19/21.
+  """
+
+  ja exportei
+  ⎿  Referenced file docs/decisions/technical-decisions-phase-03-videos.md
+  ⎿  Read nestjs-project/specs/videos-upload-complete.plan.md (127 lines)
+  ⎿  Referenced file docs/phases/phase-03-videos/phase-03-videos.md
+  ⎿  Read nestjs-project/specs/videos-download.plan.md (88 lines)
+  ⎿  Read nestjs-project/specs/videos-playback.plan.md (99 lines)
+  ⎿  Plan file referenced
+     (~/.claude/plans/tenho-o-seguinte-trabalho-indexed-canyon.md)
+  ⎿  Skills restored (be-critical)
+
+⏺ Compacted using a summary written while you were away · turn off with
+  "idleCompaction": false in settings.json
+
+⏺ Vou fechar o portão da W4.5: arquivar o export, rodar a DoD de novo e revisar
+  o diff do bloco.
+
+⏺ Bash(git status --short && ls _claude-sessions | tail -3 && git log --oneline
+      28bccbc..HEAD)
+  ⎿  (No output)
+  ⎿  Loaded nestjs-project/CLAUDE.md
+
+⏺ Bash(mv 24-implement-w4-5-phase-03.txt _claude-sessions/ && sed -i '' -e
+      's#~#~#g' -e
+      's#-Users-USER#-Users-USER#g' _claude-sessi…)
+  ⎿  2 files changed (binary, mode only or too large to show)
+     24-implement-w4-5-phase-03.txt
+     _claude-sessions/24-implement-w4-5-phase-03.txt
+  ⎿  (files that changed while this command ran, by the command or by
+     another process; a convenience view, not a review or audit of the
+     command)
+
+⏺ Bash(git diff --stat 28bccbc..HEAD && cd nestjs-project && docker compose ps
+      --format 'table {{.Service}}\t{{.Status}}')
+  ⎿  (No output)
+
+⏺ Export limpo, sem dados pessoais. Faço o commit e, em paralelo, rodo a DoD e
+  um revisor independente sobre o diff do bloco.
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project && git add _claude-sessions/24-implement-w4-5-phase-03.txt &&
+      git commit -q…)
+  ⎿  (No output)
+
+⏺ Bash({ docker compose exec -T nestjs-api npm test 2>&1 | tail -8; echo "===
+      E2E"; docker compose exec -T nestjs-api npm run test:e2e 2>&1 | tail -8;
+      echo "=== TSC";…)
+  ⎿  Running in the background (↓ to manage)
+
+⏺ code-quality-pass(Review W4.5 worker diff)
+  ⎿  Not run · auto mode's check had no usable answer (ctrl+o to expand)
+
+⏺ code-quality-pass(Review W4.5 worker diff)
+  ⎿  Backgrounded agent (↓ to manage · ctrl+o to expand)
+
+⏺ Enquanto as duas rodam, confiro o estado do worker em execução: log e chaves
+  no Redis.
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project/nestjs-project && docker compose logs --no-log-prefix
+      video-worker 2>&1 | ta…)
+  ⎿  (No output)
+
+⏺ O worker está estável. Sobraram duas chaves probe:* no Redis, deixadas pelo
+  teste manual que a W fez para provar o isolamento de prefixo. São inofensivas
+  e eu limpo depois da DoD. As chaves test:* são da DoD que está rodando agora.
+  Fico aguardando a suíte e o revisor.
+
+⏺ Background command "Run full test suites, tsc and lint in container" completed
+  (exit code 0)
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ DoD confirmada: unit+int 350/350, e2e 95/95, tsc 0, lint 0, e a árvore segue
+  limpa. Agora limpo as chaves probe:* e confiro os buckets de teste.
+
+⏺ Bash(docker compose exec -T redis sh -c 'redis-cli --scan --pattern "probe:*"
+      | xargs -r redis-cli del'; docker compose exec -T redis redis-cli --scan
+      --pattern 'tes…)
+  ⎿  (No output)
+
+⏺ Redis e buckets estão limpos; as duas chaves test:* que sobraram são as meta
+  vazias que a W já tinha reportado. Falta só o resultado do revisor.
+› Message from code-quality-pass
+  ## Review of SI-03.16 → SI-03.19 (nestjs-project diff `28bccbc..4d212cb`)
+
+  The spec references below point to
+  `docs/phases/phase-03-videos/phase-03-videos.md`.
+
+  ### Answers to the questions
+
+  1. **Permanent/transient classification.** Correct.
+  `video-processing.consumer.ts:49` uses `job.attemptsStarted >=
+  (job.opts.attempts ?? 1)`, which matches the bullmq v6 contract documented in
+  spec §Events/Messages → process-video (line 1074): `attemptsStarted` is
+  incremented at the start of each attempt, so on `attempts: 3` the last attempt
+  sees `3 >= 3`. Permanent errors (`InvalidMediaError`,
+  `SourceObjectMissingError`) go through `markFailed` + `UnrecoverableError`
+  (consumer:44-46). Both `markFailed` (`video-processing.service.ts:116`) and
+  the final update (`video-processing.service.ts:87`) carry `WHERE id = :id AND
+  processing_status IN ('processing','ready')`, so a `failed` row cannot be
+  resurrected and a re-run on `ready` is idempotent. The consumer spec exercises
+  both final-transient (`video-processing.consumer.spec.ts:91-100`) and "no
+  `opts.attempts`" (`:102-116`) cases.
+  2. **Conditional transitions.** Yes — `video-processing.service.ts:87`,
+  `:117`; `video-maintenance.service.ts:105-112` (claim uploading), `:137-143`
+  (claim processing). A stale `complete` or a concurrent sweep both lose
+  cleanly.
+  3. **execFile safety.** No shell (`media-tools.service.ts:60-73`), 120 s
+  timeout on both `probe` and `extractFrame` (`:65`, driven by
+  `MEDIA_TOOL_TIMEOUT_MS`), temp frame removed in `finally`
+  (`video-processing.service.ts:144-146`). The URL/path is a plain argv element,
+  so injection is impossible. **The source is never downloaded** —
+  `video-processing.service.ts:73-77` presigns a GET from the internal client
+  and hands the URL to ffprobe/ffmpeg, which stream only the byte ranges they
+  need (HTTP Range). Safe for a 10 GB source; no process-memory buffering of the
+  source happens. The thumbnail JPEG is fully read into memory
+  (`readFile(framePath)` on `:141`), which is fine because it's a handful of KB.
+  4. **Sweep.** `findInactive` in `video-maintenance.service.ts:150-166` selects
+  `uploading`/`processing` with `updated_at < now() - make_interval(secs =>
+  N)`, oldest first, `TAKE 100` (= `SWEEP_BATCH_SIZE`). Thresholds come from
+  `uploadStaleAfterMs` / `sweepIntervalMs` per spec line 1094-1095. Orphan
+  re-enqueue is idempotent: it goes through `processVideoJobOptions(videoId)`
+  which sets `jobId: videoId` (`queue.constants.ts:26`). Multipart abort runs
+  only when the claim affected 1 row (`:113-120`). `upsertJobScheduler` is
+  declared only in `WorkerModule.providers` (`worker.module.ts:45`); the API
+  does not list `VideoMaintenanceScheduler`, confirmed by the module spec's
+  assertion that `VideosModule` is absent from the worker container
+  (`worker.module.integration-spec.ts:133`).
+  5. **Scheduler template.** Confirmed: `{ name: 'sweep', data: {}, opts: {
+  attempts: 1 } }` at `video-maintenance.scheduler.ts:37`, no
+  `removeOnComplete`, no `removeOnFail`. With the 15 min default this is ~96
+  completed jobs/day forever, on a Redis started with `--maxmemory-policy
+  noeviction` (compose line 65). The spec text at line 1080 also omits those
+  keys, so the omission is baked into the design — it is still a real
+  operational leak and should be flagged.
+  6. **start:worker and compose.** `exec ts-node …` in `package.json:29`
+  collapses the shell layer so SIGTERM reaches ts-node (useful alongside
+  `enableShutdownHooks()`). Compose service has `restart: unless-stopped`, no
+  published port, correct `depends_on` chain. The worker reads the same `.env`
+  as the API via `ConfigModule.forRoot` (no explicit `env_file`/`environment`,
+  matching the pre-existing `nestjs-api` pattern). It cannot consume `test:*`
+  queues because the test prefix is injected only inside the Jest process by
+  `src/test/setup-test-env.ts`; the container keeps `QUEUE_PREFIX=bull` from
+  `.env`.
+  7. **Tests.** No false positives I could pin down. Spec-required rows for
+  SI-03.18 (valid→ready, invalid→INVALID_MEDIA, missing source→PROCESSING_ERROR,
+  ready re-run idempotent, failed-not-resurrected) and SI-03.19 (aged upload,
+  orphan re-enqueue, failed-job→PROCESSING_ERROR, claim lost to concurrent
+  complete) are all present. See minor notes below.
+
+  ### Findings
+
+  | sev | file:line | problem | fix |
+  |---|---|---|---|
+  | [serious] |
+  `nestjs-project/src/videos/processing/video-maintenance.scheduler.ts:37` |
+  Sweep job template has no `removeOnComplete`/`removeOnFail`, so bullmq keeps
+  every completed sweep forever (~96/day) on a Redis with `noeviction`; its JSON
+  returnvalue from `VideoMaintenanceConsumer.process()` is stored too.
+  Unbounded Redis memory growth. | Add `opts: { attempts: 1, removeOnComplete: {
+  count: 50 }, removeOnFail: { count: 100 } }` to the scheduler template; also
+  update the spec's §Events/Messages → video-maintenance block for parity. |
+  | [minor] | `nestjs-project/src/worker.ts:21` | `void bootstrap()` loses any
+  bootstrap error through Node's default unhandled-rejection path; Joi/env
+  errors reach the container log in an ugly shape before the restart. |
+  `bootstrap().catch((err) => { new Logger('VideoWorker').error(err);
+  process.exit(1); });`. |
+  | [minor] |
+  `nestjs-project/src/videos/processing/video-processing.consumer.ts:46` |
+  `throw new UnrecoverableError(\`${reason}: ${(error as Error).message}\`)`
+  drops the original stack. BullMQ's `failed` log only shows the string. |
+  `const wrapped = new UnrecoverableError(\`${reason}: ${err.message}\`);
+  wrapped.cause = err; throw wrapped;` (or just rethrow after `markFailed` and
+  let the classifier look at the error again — bullmq keeps the stack). |
+  | [minor] |
+  `nestjs-project/src/videos/processing/video-processing.service.ts:137-143` |
+  If the main `update` (`:86`) finds 0 affected rows (sweep/API moved the row to
+  `failed` mid-job), the already-uploaded `{id}/default.jpg` is orphaned in the
+  thumbnails bucket. The warn log calls it "result discarded" which hides this.
+  | Minimum: say "thumbnail may be orphaned" in the warn. Better:
+  `headObject`+`deleteObject` on the orphan when `result.affected === 0`. |
+  | [minor] |
+  `nestjs-project/src/videos/processing/video-processing.consumer.ts:49` +
+  `video-processing.service.ts:117` | On the final transient attempt, if
+  `markFailed` itself throws (DB error), the original transient is shadowed and
+  bullmq's `failed` event records the DB error instead of the real cause. | `try
+  { await markFailed(...); } catch (e) { logger.error('mark failed also
+  failed', e); } throw error;`. |
+  | [minor] |
+  `nestjs-project/src/videos/processing/video-maintenance.service.ts:123-147` |
+  `reconcileProcessing` has no branch for job state `completed`. Window is tiny
+  because of `removeOnComplete: true` on `process-video`, but during it the row
+  stays `processing`; the next tick (≥15 min later) fixes it. | Treat
+  `'completed'` as "re-add if the row is still processing", or at least log a
+  warning. |
+  | [minor] |
+  `nestjs-project/src/videos/processing/video-maintenance.service.ts:169-173` |
+  `(error as Error).message/stack` throws if `error` is a non-Error primitive
+  (rare, but possible with 3rd-party throwables). | Use a small helper that
+  handles non-Error throws: `typeof e === 'object' && e && 'message' in e ?
+  e.message : String(e)`. |
+  | [minor] | `nestjs-project/src/videos/processing/video-maintenance.service.sp
+  ec.ts:170-184` | "keeps going when aborting one multipart fails" asserts `{
+  abandoned: 1, errors: 1 }` but never asserts *which* row got claimed before
+  the abort failed. If the mock sequence changes, the test still passes. | After
+  the sweep, also assert `videoRepository.update` was called twice with the
+  claim WHERE for both ids. |
+  | [minor] | `nestjs-project/package.json:29` | `exec` only on `start:worker`;
+  `openapi:export` and `start:dev` do not use it. Minor consistency issue. |
+  Harmless as-is; align if you add other long-running scripts. |
+  | [minor] | `nestjs-project/compose.yaml:22` | Worker `depends_on` omits
+  `mailpit` (API includes it). The worker genuinely does not need mail, so this
+  is fine and intentional — flagging only because a reader comparing the two
+  services may question it. | Add a one-line comment `# worker never sends
+  mail`. |
+
+  ### Spec-required rows coverage
+  - SI-03.18 (line 571) — all five scenarios present in
+  `video-processing.service.integration-spec.ts`.
+  - SI-03.19 (line 602) — all four scenarios present across
+  `video-maintenance.service.integration-spec.ts`; the scheduler idempotence row
+  is in `video-maintenance.scheduler.integration-spec.ts`.
+
+  Nothing else is a bug; the correctness-critical pieces (classification,
+  conditional writes, claim-before-abort, idempotent enqueue, scheduler
+  single-registration, execFile safety, streaming via presigned URL) check out
+  against the spec.
+
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project && sed -n 30,42p
+      nestjs-project/src/videos/processing/video-maintenance.sche…)
+  ⎿  (No output)
+
+⏺ Agent "Review W4.5 worker diff" finished · 5m 50s
+
+⏺ O acúmulo no Redis está confirmado: o template não tem removeOnComplete, e as
+  linhas 594, 1080 e 1088 do plano reproduzem a mesma omissão. Atualizo o PR e o
+  plano mestre.
+
+⏺ Bash(cd /private/tmp/claude-501/-Users-USER-Documents-projects-fu
+      ll-cycle-mba-ia-greenfield-project/55b02c80-f286-4d81-ad0c-2effe3091a3d/sc
+      ratchpad && g…)
+  ⎿  (No output)
+
+⏺ Bash(S=/private/tmp/claude-501/-Users-USER-Documents-projects-ful
+      l-cycle-mba-ia-greenfield-project/55b02c80-f286-4d81-ad0c-2effe3091a3d/scr
+      atchpad && se…)
+  ⎿  (No output)
+
+⏺ Updated plan
+  ⎿  /plan to preview
+
+⏺ Antes do brief da W4.6, confiro o que o plano pede nos SI-03.20 e 03.21.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Portão da W4.5: aprovado
+
+  A DoD rodou de novo do meu lado e bateu com o que a W reportou: 350/350 em
+  unit+integração, 95/95 no e2e, tsc 0 e lint 0. Os buckets -test ficaram
+  vazios. O container video-worker está estável (0 reinícios, sem porta exposta,
+  prefixo bull) e não consome os jobs dos testes. Branch publicada, PR #4
+  atualizado e o export da W4.5 está commitado (0b88001).
+
+  O que o revisor independente confirmou como correto:
+  - Erros: um arquivo inválido falha na hora, sem novas tentativas. Uma falha
+    passageira tenta 3 vezes e só então vira PROCESSING_ERROR.
+  - Status: toda mudança de status no banco é condicional. Um vídeo failed nunca
+    volta a processar, e reprocessar um ready não quebra nada.
+  - Varredura: só toca linhas paradas além do limite, cancela o upload no
+    storage só depois de "reservar" a linha, e reenfileirar um vídeo não cria
+    job duplicado.
+  - Arquivo de origem: o worker não baixa o vídeo. Passa ao ffprobe/ffmpeg uma
+    URL pré-assinada, e eles leem só os trechos de que precisam. Isso é o que
+    torna 10 GB viável.
+
+  Um problema sério, que vai no início da W4.6:
+  - A tarefa de varredura roda a cada 15 min, e cada execução concluída fica
+    guardada no Redis para sempre (cerca de 96 por dia). Como o Redis está
+    configurado para nunca descartar dados, a memória cresce sem limite.
+  - A W apontou isso com razão: a omissão vem do próprio plano (linhas 594, 1080
+    e 1088).
+  - A correção é limitar quantas execuções ficam guardadas, e o plano é ajustado
+    no mesmo commit.
+
+  Pontos menores aceitos, anotados como pendências no plano mestre:
+  - erro na inicialização do worker sem tratamento explícito;
+  - erro original não anexado ao erro final do job;
+  - thumbnail que pode ficar órfã se o status do vídeo mudar no meio do
+    processamento;
+  - falha ao gravar failed que esconde o erro original;
+  - um estado do job sem tratamento na varredura, que a passada seguinte
+    corrige.
+
+  Sobre os desvios que a W listou:
+  - O exec no start:worker está certo.
+  - A primeira varredura imediata não causa problema.
+  - O down -v && up -d fica para a E5, comigo.
+
+  Também limpei duas chaves probe:* que o teste manual da W deixou no Redis.
+
+  Brief da W4.6 (último bloco)
+
+  Abra uma sessão nova, cole o texto abaixo e digite /implement phase-03-videos.
+
+  Fase 03, branch `feature/phase-03-videos`, bloco W4.6 (último): implementar
+  SI-03.20 (e2e do pipeline completo) e SI-03.21 (docs + openapi) e rodar a
+  final verification. Plano mestre:
+  `~/.claude/plans/tenho-o-seguinte-trabalho-indexed-canyon.md` (Etapa 4).
+  W4.1–W4.5 fecharam SI-03.1–03.19.
+
+  ANTES do SI-03.20, um commit de correção pedido pelo líder (registrar nas
+  Observations do progress.md):
+  - `src/videos/processing/video-maintenance.scheduler.ts`: o template do Job
+  Scheduler é só `{ attempts: 1 }`, então cada varredura concluída fica no Redis
+  para sempre (~96/dia, Redis com `noeviction`). Adicionar `removeOnComplete` e
+  `removeOnFail` com contagem limitada (ex.: `{ count: 50 }` e `{ count: 100
+  }`). Confira no context7 (bullmq 6, `upsertJobScheduler` + `KeepJobs`) que
+  essas opções valem no template.
+  - Atualizar o plano no mesmo commit:
+  `docs/phases/phase-03-videos/phase-03-videos.md` linhas ~594 (SI-03.19 ação
+  4), ~1080 e ~1088 (Events/Messages → video-maintenance) com o novo template.
+  - Teste: `video-maintenance.scheduler.integration-spec.ts` passa a conferir as
+  opções do template no scheduler salvo (`getJobScheduler`).
+  - Commit: `fix(videos): bound sweep job retention in Redis`.
+
+  Regras:
+  - context7 antes de usar lib. Skills `nestjs-best-practices` e
+  `testing-guide-nestjs-project` (e `openapi-docs-nestjs` se existir no repo).
+  - Todo npm/test/tsc/lint dentro do container. Nunca `localhost` entre
+  serviços. Não mockar o que roda no Compose: o e2e do pipeline usa Postgres,
+  MinIO, Redis e ffmpeg reais.
+  - SI-03.20:
+    - App HTTP e `WorkerModule` sobem no mesmo processo Jest, no prefixo `test`.
+    - Atenção ao AC "nenhum job aparece sob `bull:*`": o container
+  `video-worker` de dev é dono legítimo de chaves `bull:video-maintenance:*`. A
+  asserção deve ser "não existe job com `jobId = videoId` na fila
+  `video-processing` de prefixo `bull`", nunca "não existe chave `bull:*`".
+    - O arquivo de ~11 MiB é gerado no `beforeAll` com `-fs 11M`, e o helper
+  falha se der ≥ 12 MiB. Remova o arquivo no `afterAll`.
+    - Sem open handles: feche worker e app, e rode `obliterateTestQueues` +
+  limpeza dos buckets `-test`.
+    - Rode o arquivo 3 vezes seguidas para provar que não é intermitente.
+  - SI-03.21, além das ações do plano, inclui as pendências acumuladas dos
+  portões:
+    - (a) Em `.claude/rules/nestjs-controllers.md`, registrar a exceção: rotas
+  `@OptionalAuth()` também levam `@ApiBearerAuth('access-token')`.
+    - (b) Na seção de execução de testes do `nestjs-project/CLAUDE.md`, que está
+  desatualizada: `npm test` e `test:e2e` já trazem `--runInBand`, e o
+  isolamento vem do `setup-test-env`.
+    - (c) Na seção do worker, documentar que `docker compose stop video-worker`
+  mostra `npm error signal SIGTERM` e código 1, e que isso é esperado: os
+  shutdown hooks rodam antes.
+    - (d) O Redis publica a porta 6379 no host. Faça um grep: se nada no host
+  usa essa porta (scripts, docs, testes, MCP), remova o `ports` do redis em um
+  commit separado `chore(compose): stop publishing redis port to the host`. Se
+  algo usa, mantenha e documente. Não misture esse commit com o de docs.
+    - Cada arquivo, comando e endpoint citado nos CLAUDE.md tem que existir no
+  código: confira com grep antes de commitar.
+  - Não rode `docker compose down -v`. Isso fica para o líder na E5.
+  - Se algo do plano não funcionar como escrito, PARE e me traga antes de
+  improvisar.
+
+  Ritual por SI: implementar → testes do SI verdes → atualizar `progress.md` →
+  commit local (`feat(videos): SI-03.20 ...`, `docs: SI-03.21 ...`; código/docs
+  + progress.md, `git add` explícito, sem Co-Authored-By, sem push).
+  Depois do SI-03.21, em "Rodar final verification?", responda SIM: suíte
+  completa (unit+integration e e2e), `npx tsc --noEmit`, `npm run lint` e build,
+  tudo no container. Depois confira `mc ls --incomplete` nos buckets `-test`,
+  `docker compose ps` com o video-worker estável e `progress.md` em 21/21 com
+  `Status: completed`. Commit do fechamento.
+  No fim: resumo de 5 linhas (commits, testes, desvios do plano, pendências). O
+  export eu peço separado.
+
+  Respostas para as pausas da skill:
+  - "Seguir para SI-X?": sim, tanto depois do commit de correção quanto depois
+    do SI-03.20.
+  - "Rodar final verification?": sim.
+  - No fim: /export 25-implement-w4-6-phase-03.txt.
+
+  Depois disso entra a E5, que fica comigo:
+  - DoD do zero (down -v && up -d);
+  - smoke test com um arquivo de 1–2 GB, incluindo o caminho de erro;
+  - checagem dos critérios de aceite item a item.
+
+  Só então passo para você decidir o merge do PR #4 na dev e da dev na main.
+
+❯ resultado
+  """
+  6:19 PM
+  Bloco W4.6 fechado: a Fase 03 está em 21/21 com Status: completed. São 5
+  commits locais, sem push.
+
+  Commits: 1aea8f9 fix da retenção do sweep (o scheduler agora guarda no máximo
+  50 jobs concluídos e 100 falhos) → f1340fd SI-03.20 → 1d16cb2
+  chore(compose), separado → 5364b1a SI-03.21 → d5a1b77 fechamento.
+  Testes: npm test 367/367, test:e2e 101/101, tsc, lint e build saíram com 0,
+  tudo no container. O videos-pipeline passou 6/6 em 3 rodadas seguidas e não
+  roda job sob bull:video-processing. Os buckets -test estão sem objetos e sem
+  uploads incompletos, e o video-worker está running com RestartCount=0.
+  Desvios do plano: nenhum que exigisse parar. O -fs 11M gera 10,86 MiB, não
+  "um pouco mais de 11 MiB" como o plano diz, mas fica dentro da faixa de
+  10–11,5 MiB e dá 3 partes. A asserção de isolamento virou um teste próprio,
+  que também confirma o job falho na fila test:. O --detectOpenHandles mostra
+  só o CustomGC do @css-inline do Mailer, que já aparece nas outras suítes e2e.
+  Pendências (a)–(d): (a) e (b) estão registradas nas docs. (c) eu reproduzi
+  antes de documentar: Exited (1), depois que o log mostra Video worker stopped
+  (SIGTERM). (d) O grep não achou uso da 6379 no host, então tirei o ports do
+  redis. Recriar o redis zerou as chaves de fila de dev, e o worker recriou o
+  scheduler depois do restart.
+  Para você na E5: docker compose down -v (não rodei), push e PR, e o export da
+  sessão. As caixas de Deliverables do plano continuam desmarcadas, como nos
+  blocos anteriores.
+  """
+
+  ja exportei
+
+⏺ Faço o portão da W4.6 primeiro: arquivo o export, rodo a DoD de novo e reviso
+  o diff. A E5 vem depois.
+
+⏺ Bash(git status --short && ls *.txt 2>/dev/null; git log --oneline
+      0b88001..HEAD; git diff --stat 0b88001..HEAD | tail -30)
+  ⎿  (No output)
+
+⏺ Bash(mv 25-implement-w4-6-phase-03.txt _claude-sessions/ && sed -i '' -e
+      's#~#~#g' -e
+      's#-Users-USER#-Users-USER#g' _claude-sessi…)
+  ⎿  2 files changed (binary, mode only or too large to show)
+     25-implement-w4-6-phase-03.txt
+     _claude-sessions/25-implement-w4-6-phase-03.txt
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project/nestjs-project && { docker compose exec -T nestjs-api npm test
+      2>&1 | tail -…)
+  ⎿  Running in the background (↓ to manage)
+
+⏺ code-quality-pass(Review W4.6 docs and pipeline e2e)
+  ⎿  Backgrounded agent (↓ to manage · ctrl+o to expand)
+
+⏺ Export 25 commitado e limpo (4fd3634). A DoD está rodando no container, e um
+  revisor independente confere duas coisas: se os CLAUDE.md batem com o código e
+  se o e2e do pipeline não tem falso positivo. Volto com o veredito assim que
+  os dois terminarem.
+
+⏺ Background command "Run full suites, tsc, lint and build in container"
+  completed (exit code 0)
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ DoD confirmada do meu lado: unit+int 367/367, e2e 101/101, e tsc, lint e build
+  com saída 0. A árvore segue limpa. Falta só o revisor terminar.
+
+› Message from code-quality-pass
+  ## Phase 03 final-block review (commits 1aea8f9 → d5a1b77)
+
+  ### Blocking
+  (none)
+
+  ### Serious
+
+  - **[serious] `nestjs-project/test/helpers/video-pipeline.ts:46-54` — cleanup
+  can leak the worker.** `stopVideoPipeline` puts
+  `obliterateTestQueues(ctx.worker)` and `ctx.worker.close()` in the same `try`;
+  if the obliterate throws (Redis hiccup, stray job write race),
+  `worker.close()` is never called, the worker keeps consuming while
+  `closeVideosE2eApp` closes the app underneath it, and Jest reports open
+  handles that hide the real cause. Fix: wrap the worker close in its own
+  try/finally (close the worker before cleaning tables; swallow the obliterate
+  error after we've logged it, or close the worker in an inner finally). The
+  same test has `afterAll` cleanup that depends on this.
+
+  - **[serious] `nestjs-project/CLAUDE.md:186` (Vídeos section) heading
+  language.** Every other H2 in `nestjs-project/CLAUDE.md` is English (`Video
+  Worker`, `Code Conventions`, `Vídeos` is the one PT exception). Phase 03 AC
+  for SI-03.21 says `each file, command and endpoint cited exists in the code`
+  and does not mandate the section name, but the inconsistency sticks out in an
+  English-only doc. Fix: rename to `## Videos` (rest of section is already
+  English).
+
+  - **[serious] `nestjs-project/CLAUDE.md:208` status-mapping table column
+  header `Challenge cycle`.** This is a word-for-word translation of PT "ciclo
+  do desafio" that reads as broken English. The cell values (`rascunho`,
+  `processando`, `pronto`, `erro`) are Portuguese by design (challenge
+  terminology), but the column header should be English. Fix: rename to
+  something like `Challenge term` or just `State`.
+
+  ### Minor
+
+  - **[minor]
+  `nestjs-project/test/videos-pipeline.e2e-spec.ts:88,139,154,188,201,220` —
+  `it()` descriptions in Portuguese kebab-case.** Every other e2e file in
+  `test/` uses English `it('…')`. The suite's own `describe('videos-pipeline')`
+  is English. Not a correctness issue but a house-style drift and will surface
+  in the Jest reporter.
+
+  - **[minor] `test/videos-pipeline.e2e-spec.ts:120` —
+  `expect(video.thumbnailUrl).toEqual(expect.any(String))` accepts the empty
+  string.** A broken mapper that returned `''` would pass this assertion; the
+  subsequent `fetch('')` throws a `TypeError`, which hides the real cause. Fix:
+  `expect(video.thumbnailUrl).toMatch(/^http/)` (or a tighter path check against
+  `/thumbnails-test/`).
+
+  - **[minor] `test/videos-pipeline.e2e-spec.ts:253-256` (isolation test) only
+  asserts `/videos-test/{videoId}/source`.** AC for SI-03.20 says the cycle uses
+  "os buckets `-test`" (plural). Nothing in this test, or in the ready test,
+  verifies the thumbnail URL points at `thumbnails-test`. Fix: in the ready
+  test, also `expect(new
+  URL(video.thumbnailUrl).pathname).toMatch(/^\/thumbnails-test\//)` before the
+  fetch.
+
+  - **[minor] `test/videos-pipeline.e2e-spec.ts:184-186` — download
+  Content-Disposition check is `/^attachment;/` only.** The AC does not require
+  a filename match, so this is within scope, but the test is one character away
+  from being tighter (`/^attachment; filename=/`) and would then also prove the
+  API carried `original_filename` through.
+
+  - **[minor] `test/videos-pipeline.e2e-spec.ts:93-108` — pause/resume test
+  calls `POST …/upload/part-urls` with `.send({})`.** The controller accepts it,
+  but the test name promises "retomada" and a defensive `.send({ partNumbers:
+  [2, 3] })` variant is never exercised here. Not an AC gap (there is a
+  dedicated `videos-upload-part-urls.e2e-spec.ts`), just worth noting the
+  pipeline e2e exercises only the "sign all missing" branch.
+
+  - **[minor] `nestjs-project/CLAUDE.md:138` — `test:integration` npm script is
+  not listed in "Container-only commands".** The script exists in `package.json`
+  (line 92) and is useful day-to-day. Adding it is a one-liner; nothing in
+  SI-03.21's AC forces it, but the "Commands" list is advertised as complete.
+
+  - **[minor] `nestjs-project/CLAUDE.md:139` — the `openapi:export` bullet says
+  "commit the diff" but gives no path.** Trivial to add
+  `nestjs-project/openapi.json` alongside the command.
+
+  ### Doc-coherence spot checks that passed
+
+  Grepped every file path, npm script, env var, Compose service, port, endpoint,
+  bucket name, queue name and command from the changed blocks of both CLAUDE.md
+  files and the mermaid against the code:
+
+  - All 7 controller routes match the table in
+  `nestjs-project/CLAUDE.md:194-202` and `openapi.json` (`POST /videos/uploads`,
+  `POST /videos/:id/upload/part-urls`, `POST /videos/:id/upload/complete`,
+  `DELETE /videos/:id/upload`, `GET /videos/:id`, `GET
+  /videos/:publicId/playback`, `GET /videos/:publicId/download`);
+  `@OptionalAuth()` + `@ApiBearerAuth('access-token')` present on both public
+  routes; `@SkipThrottle()` at controller level; `Cache-Control: no-store` on
+  the two optional-auth routes.
+  - Status mapping: enum values in `src/videos/entities/video.entity.ts`
+  (`uploading`/`processing`/`ready`/`failed`, draft, and the five failure
+  reasons) match the doc 1:1.
+  - Compose services (`nestjs-api`, `db`, `mailpit`, `redis`, `minio`,
+  `minio-init`, `video-worker`), ports (`3000`, `5432`, `1025/8025`,
+  `9000/9001`), bucket names (`videos`, `thumbnails`, `videos-test`,
+  `thumbnails-test`) and `REDIS_HOST=redis` /
+  `S3_PUBLIC_ENDPOINT=http://minio.localhost:9000` all match `compose.yaml` and
+  `.env.example`.
+  - Worker log strings (`Video worker started …`, `Consuming
+  "video-processing"`, `Consuming "video-maintenance"`, `Sweep done: …`, `Video
+  worker stopped (…)`) exist verbatim in `src/worker.ts`,
+  `src/worker/worker.module.ts`,
+  `src/videos/processing/video-processing.consumer.ts`,
+  `src/videos/processing/video-maintenance.consumer.ts`.
+  - Scheduler ID `video-maintenance-sweep` and job name `sweep`/`process-video`
+  match `src/queue/queue.constants.ts`; sweep retention `removeOnComplete: {
+  count: 50 }`, `removeOnFail: { count: 100 }` in
+  `video-maintenance.scheduler.ts:43-45` is the exact object the new assertion
+  in `video-maintenance.scheduler.integration-spec.ts:63-68` checks.
+  - Jest `setupFiles` strings quoted in `nestjs-project/CLAUDE.md:148` match
+  `package.json:98-101` (`rootDir=src`) and `test/jest-e2e.json:8`
+  (`<rootDir>/../src/test/setup-test-env.ts`) exactly.
+  - Mermaid diagram no longer contains `TBD`; root `CLAUDE.md` no longer
+  contains `not yet initialized`; `redis` service in `compose.yaml` no longer
+  exposes `6379` to the host.
+  - The openapi-export spec covers all SI-03.21 OpenAPI ACs: `access-token`
+  requirement for all 7 ops (including the two optional-auth routes),
+  `description` starts with `Authentication optional.` for playback/download,
+  every ≥400 response `$ref`s `ApiErrorEnvelope`, and the "exactly 7 operations"
+  assertion is a hard regression detector.
+
+  ### Pipeline e2e sanity checks that passed
+
+  - No tautological asserts: every `expect` reads a value produced by a
+  different path than the one that set it (declared size on initiate → DB → DTO
+  → compared against the response body from storage via a presigned URL;
+  `publicId` regex checked against the controller's own generator;
+  `processingStatus` reached via polling, not stubbed).
+  - 206 check also asserts `Content-Range: bytes 0-1023/${sizeBytes}` and
+  `arrayBuffer().byteLength === 1024`, so it proves the Range was honored, not
+  just that the fetch didn't throw.
+  - `waitForStatus` short-circuits on any final status (ready/failed), so a
+  pipeline failure surfaces its `failureReason` instead of a 60s-timeout generic
+  error.
+  - Cleanup `afterAll` runs `stopVideoPipeline` and `rm(videoPath)` under an
+  outer `try/finally` guarded by `if (ctx)` / `if (videoPath)`, so a boot
+  failure never leaves the generated .mp4 behind.
+  - Safety: `obliterateTestQueues` refuses any prefix other than `'test'`
+  (`src/test/queues.ts:19`); `resetVideoTestBuckets` refuses any bucket not
+  ending in `-test` (`src/test/storage.ts:34`). The suite cannot reach `bull:*`
+  or non-`-test` buckets by construction.
+  - Isolation assertion is not vacuous:
+  `expect(testQueue.opts.prefix).toBe('test')` is checked before the
+  `bull`-prefixed lookup, and the dev container's legitimate ownership of
+  `bull:video-maintenance:*` is documented in-code as the reason the check is
+  scoped to this videoId in `video-processing`.
+  - `VideoProcessingConsumer.process` throws `UnrecoverableError` on
+  `InvalidMediaError`, so the isolation test's `expect(await
+  testJob?.getState()).toBe('failed')` is sound (job stays `failed`, not
+  `completed`-and-removed-by-`removeOnComplete: true`).
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project/nestjs-project && sed -n 40,60p test/helpers/video-pipeline.ts;
+      grep -hoE "^…)
+  ⎿  (No output)
+
+⏺ Agent "Review W4.6 docs and pipeline e2e" finished · 8m 10s
+
+⏺ Bash(sed -n 56,75p test/helpers/video-pipeline.ts)
+  ⎿  (No output)
+  ⎿  Loaded ../.claude/rules/typescript-strict.md
+  ⎿  Loaded ../.claude/rules/nestjs-testing.md
+
+⏺ O revisor não achou nada bloqueante. Atualizo o PR e o plano mestre.
+
+⏺ Bash(S=/private/tmp/claude-501/-Users-USER-Documents-projects-ful
+      l-cycle-mba-ia-greenfield-project/55b02c80-f286-4d81-ad0c-2effe3091a3d/scr
+      atchpad && se…)
+  ⎿  (No output)
+
+⏺ Updated plan  ⎿  /plan to preview
+
+⏺ A W4.6 passou no portão, e com ela a implementação da Fase 03 está fechada: 21
+  de 21 SIs concluídos. Rodei a DoD de novo do meu lado e bateu com o relatório
+  da W:
+  - unit e integração: 367/367;
+  - e2e: 101/101;
+  - tsc, lint e build saíram com 0.
+
+  O export 25 está commitado (4fd3634), a branch foi publicada e o PR #4 está
+  com todos os blocos marcados.
+
+  O que o revisor independente confirmou:
+  - Os CLAUDE.md batem com o código. Ele procurou no código cada item citado:
+    endpoints, status, serviços, portas, buckets, mensagens de log e comandos.
+    Todos existem com a mesma grafia, e não sobrou nenhum "TBD" nem "not yet
+    initialized".
+  - O teste de ponta a ponta prova o que promete. O playback confere de fato o
+    trecho devolvido (206, só 1 KB). O tamanho do download vem do storage. O
+    isolamento fica restrito ao vídeo do teste, porque o worker de dev é dono
+    legítimo das chaves bull: da varredura.
+  - O contrato da API cobre os critérios de aceite. Inclui as duas rotas de
+    autenticação opcional.
+
+  Dois ajustes que proponho num commit pequeno de testes:
+  1. Fechamento do teste de ponta a ponta: se a limpeza da fila falhar, o worker
+     fica aberto. Basta fechar o worker num bloco separado da limpeza.
+  2. Thumbnail: hoje o teste aceita qualquer texto como thumbnailUrl, até vazio.
+     Passaria a exigir o caminho /thumbnails-test/, o que também prova o uso do
+     bucket de teste.
+
+  Recusei dois pontos do revisor:
+  - Renomear a seção "Vídeos" para inglês: o critério do SI-03.21 exige esse
+    nome.
+  - Trocar os nomes dos testes em português: seguem o mesmo padrão dos outros
+    testes de vídeo.
+
+  E5: o que falta
+
+  1. Os 2 ajustes de teste acima, se você concordar.
+  2. DoD do zero: docker compose down -v, depois up -d --build, npm ci,
+     migrations e as suítes completas. Isso prova que storage, fila e worker
+     sobem juntos num ambiente limpo.
+  3. Teste manual com um arquivo de 1–2 GB gerado no container:
+     - criar o rascunho;
+     - enviar em partes direto ao storage;
+     - acompanhar processing → ready;
+     - conferir thumbnail, duração e metadados no banco, a URL única, o Range →
+       206 e o download;
+     - repetir com um arquivo inválido para ver o status de erro.
+  4. Conferir os critérios de aceite do desafio um a um, exportar esta sessão e
+     marcar os Deliverables do plano.
+  5. Abrir para revisão o PR #4 (hoje em rascunho), fazer o merge na dev e
+     depois dev → main. Cada um desses passos só com o seu OK.
+
+  Preciso de duas confirmações para começar:
+  - (a) Aplico os 2 ajustes de teste?
+  - (b) Posso rodar o down -v? Ele apaga os volumes de dev: banco, arquivos do
+    MinIO e Redis. Usuários ou vídeos que você criou à mão somem. Os testes não
+    dependem desses dados.
+
+❯ sim, aplica os 2 ajustes e pode rodar o down -v
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project/nestjs-project && sed -n 125,145p
+      test/videos-pipeline.e2e-spec.ts; sed -n 1…)
+  ⎿  (No output)
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+⏺ Bash(sed -n 422,432p src/videos/videos.service.ts; grep -n
+      "publicObjectUrl\|getPublicUrl" -A8 src/storage/storage.service.ts | head
+      -20)
+  ⎿  (No output)
+
+⏺ Agora aplico os dois ajustes.
+
+⏺ Update(nestjs-project/test/videos-pipeline.e2e-spec.ts)
+  ⎿  Added 7 lines, removed 2 lines
+      134        });
+      135        expect(video.durationSeconds).toBeGreaterThan(0);
+      136        expect(video.processedAt).not.toBeNull();
+      137 -      expect(video.thumbnailUrl).toEqual(expect.any(String)); 
+      138 -      const thumbnail = await fetch(video.thumbnailUrl as stri
+          -ng);                                                          
+      137 +      expect(video.thumbnailUrl).not.toBeNull();              
+      138 +      const thumbnailUrl = new URL(video.thumbnailUrl as strin
+          +g);                                                           
+      139 +      expect(thumbnailUrl.host).toBe('minio.localhost:9000'); 
+      140 +      expect(thumbnailUrl.pathname).toBe(                     
+      141 +        `/thumbnails-test/${video.id}/default.jpg`,           
+      142 +      );                                                      
+      143 +      const thumbnail = await fetch(thumbnailUrl);            
+      144        expect(thumbnail.status).toBe(200);
+      145        expect(thumbnail.headers.get('content-type')).toBe('imag
+           e/jpeg');
+      146      },
+
+⏺ Update(nestjs-project/test/helpers/video-pipeline.ts)
+  ⎿  Added 7 lines, removed 2 lines
+      57    ctx: VideoPipelineContext,
+      58  ): Promise<void> {
+      59    try {
+      60 -    await obliterateTestQueues(ctx.worker);                    
+      61 -    await ctx.worker.close();                                  
+      60 +    try {                                                      
+      61 +      await obliterateTestQueues(ctx.worker);                  
+      62 +    } finally {                                                
+      63 +      // Close the consumers even if the wipe fails, or they ke
+         +ep writing to                                                  
+      64 +      // the DB while the app closes underneath them.          
+      65 +      await ctx.worker.close();                                
+      66 +    }                                                          
+      67      await cleanAllTables(ctx.dataSource);
+      68    } finally {
+      69      await closeVideosE2eApp(ctx);
+
+⏺ Bash(docker compose exec -T nestjs-api npx jest --config ./test/jest-e2e.json
+      --runInBand test/videos-pipeline.e2e-spec.ts 2>&1 | tail -15 && docker
+      compose exec -T…)
+  ⎿  (No output)
+
+⏺ O teste de ponta a ponta passou (6/6), e lint e tsc ficaram limpos. Faço o
+  commit e sigo para o down -v.
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project && git add nestjs-project/test/videos-pipeline.e2e-spec.ts
+      nestjs-project/te…)
+  ⎿  (No output)
+
+⏺ Agora a DoD do zero, seguindo a ordem que o nestjs-project/CLAUDE.md manda.
+  Antes, confiro se o .env tem as mesmas chaves do .env.example, sem mostrar os
+  valores.
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project/nestjs-project && diff <(grep -oE '^[A-Z_]+=' .env.example |
+      sort) <(grep -o…)
+  ⎿  (No output)
+
+⏺ Bash(docker compose up -d --build 2>&1 | tail -12)
+  ⎿  (No output)
+
+⏺ Bash(docker compose exec -T nestjs-api npm ci 2>&1 | tail -4 && docker compose
+      exec -T nestjs-api npm run migration:run 2>&1 | grep -E "Migration .* has
+      been|No migr…)
+  ⎿  (No output)
+
+⏺ Bash(docker compose ps -a --format 'table
+      {{.Service}}\t{{.Status}}\t{{.Ports}}'; docker compose exec -T db
+      pg_isready -U streamtube; docker compose exec -T redis re…)
+  ⎿  (No output)
+
+⏺ O ambiente subiu limpo, com os 7 serviços no ar e todas as verificações de
+  prontidão aprovadas. Agora rodo as suítes completas. · summary
+
+⏺ Bash(docker compose exec -T nestjs-api npm test 2>&1 | grep -E "^Tests:|^Test
+      Suites:"; docker compose exec -T nestjs-api npm run test:e2e 2>&1 | grep
+      -E "^Tests:|^T…)
+  ⎿  (No output)
+
+⏺ Os testes de unidade, integração e e2e passaram, com o lint e o build também
+  limpos. Agora vou subir a API em modo dev no container para o teste manual com
+  o arquivo grande, e derrubá-la ao final. · summary
+
+  Listed 1 directory (ctrl+o to expand)
+
+⏺ Bash(ls src/videos/dto/ src/auth/dto/; for f in
+      src/videos/dto/initiate-upload*.ts src/videos/dto/request-part-urls*.ts
+      src/auth/dto/register*.ts; do echo "== $f"; g…)
+  ⎿  Error: Exit code 1
+     src/auth/dto/:
+     confirm-email.dto.ts
+     forgot-password.dto.ts
+     login.dto.ts
+     refresh-token.dto.ts
+     register.dto.ts
+     resend-confirmation.dto.ts
+     reset-password.dto.ts
+
+     … +10 lines (ctrl+o to expand)
+
+⏺ Bash(for f in src/videos/dto/initiate-upload.dto.ts
+      src/videos/dto/initiate-upload-response.dto.ts
+      src/videos/dto/part-urls.dto.ts src/videos/dto/part-urls-response.…)
+  ⎿  (No output)
+
+⏺ Contratos levantados; a confirmação de email segue o fluxo real até o GET
+  /auth/confirm-email. Agora gero um vídeo de ~1,5 GB dentro do container e subo
+  a API em paralelo. · summary
+
+⏺ Bash(time docker compose exec -T nestjs-api sh -c 'ffmpeg -v error -nostdin -y
+      -f lavfi -i testsrc2=size=1280x720:rate=30 -f lavfi -i
+      sine=frequency=440:sample_rate=…)
+  ⎿  Running in the background (↓ to manage)
+
+⏺ Bash(docker compose exec -d nestjs-api sh -c 'npm run start:dev >
+      /tmp/api-dev.log 2>&1' && echo started)  ⎿  (No output)
+
+⏺ Enquanto o arquivo é gerado, escrevo o script do teste. Antes confiro o
+  formato da resposta do login e as regras de senha.
+
+⏺ Bash(sed -n 1,20p src/auth/dto/register.dto.ts; grep -rn "access_token"
+      src/auth/*.ts | grep -v spec | head -3; grep -rn
+      "confirm-email?token\|confirm-email" src/mai…)
+  ⎿  (No output)
+
+  Made 1 scratchpad edit +179, searched for 1 pattern (ctrl+o to expand)
+
+⏺ Background command "Generate 1.5 GB test video and invalid file in container"
+  completed (exit code 0)
+
+⏺ Bash(cat /private/tmp/claude-501/-Users-USER-Documents-projects-f
+      ull-cycle-mba-ia-greenfield-project/55b02c80-f286-4d81-ad0c-2effe3091a3d/t
+      asks/b08rwo1z…)
+  ⎿  (No output)
+
+⏺ Arquivo de 1,41 GiB gerado e API no ar. Rodo o teste.
+
+⏺ Bash(docker compose cp
+      /private/tmp/claude-501/-Users-USER-Documents-projects-full-c
+      ycle-mba-ia-greenfield-project/55b02c80-f286-4d81-ad0c-2effe3091a3d/…)
+  ⎿  (No output)
+
+⏺ O teste manual passou; a seguir vou conferir o caminho do navegador, o
+  registro no banco e se quem processou o vídeo foi o container video-worker.
+  · summary
+
+⏺ Bash(URL=$(tail -1
+      /private/tmp/claude-501/-Users-USER-Documents-projects-full-c
+      ycle-mba-ia-greenfield-project/55b02c80-f286-4d81-ad0c-2effe3091a3d/scra…)
+  ⎿  (No output)
+
+⏺ Duas coisas apareceram fora do script. Investigo a primeira: uma linha second
+  em processing no banco de dev, que não veio do teste manual.
+
+⏺ Bash(grep -rn "'second'" test/ src --include=*-spec.ts | head; docker compose
+      exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -c
+      "select v.created_a…)
+  ⎿  (No output)
+
+⏺ Bash(grep -rln "second" test/*.e2e-spec.ts | xargs grep -n "title:
+      'second'\|'second'\|\"second\"" | head; ls test/*.e2e-spec.ts | head -20)
+  ⎿  (No output)
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+⏺ A linha second vem de uma suíte e2e que limpa o banco antes de cada teste,
+  deixando o último registro no banco compartilhado; isso é resíduo já
+  documentado e não causa dano. Vou investigar agora a origem da URL
+  pré-assinada, que o log do worker grava com a assinatura inteira. · summary
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+⏺ Bash(sed -n 60,95p src/videos/processing/media-tools.service.ts)
+  ⎿  (No output)
+  ⎿  Loaded ../.claude/rules/typeorm-queries.md
+  ⎿  Loaded ../.claude/rules/nestjs-common-conventions.md
+  ⎿  Loaded ../.claude/rules/nestjs-services.md
+
+⏺ A assinatura vaza pelo stderr do ffprobe, que repete a URL de entrada e vai
+  parar no log e no Redis; vou desligar o servidor de dev e apagar os arquivos
+  grandes antes de mexer no código, que fica como está até você responder.
+  · summary
+
+⏺ Bash(docker compose exec -T nestjs-api rm -f /tmp/smoke-1_5g.mp4
+      /tmp/smoke-invalid.mp4 /tmp/smoke.js && docker compose restart nestjs-api
+      2>&1 | tail -1 && sleep 3…)
+  ⎿  (No output)
+
+⏺ Bash(docker compose exec -T -u root nestjs-api rm -f /tmp/smoke-1_5g.mp4
+      /tmp/smoke-invalid.mp4 /tmp/smoke.js && docker compose exec -T nestjs-api
+      ls /tmp | grep -c…)
+  ⎿  (No output)
+
+⏺ O servidor ainda responde (302) depois do restart. Vejo qual é o comando
+  padrão do container.
+
+⏺ Bash(grep -n -A12 "^  nestjs-api:" compose.yaml | grep -nE
+      "command|entrypoint|ports"; grep -nE "CMD|ENTRYPOINT" Dockerfile.dev;
+      docker compose exec -T nestjs-api sh…)
+  ⎿  (No output)
+
+⏺ O servidor da fase já está parado, e o 302 vem de outro app na porta 3000 do
+  seu Mac, não do StreamTube. Vou publicar o commit dos testes e atualizar o
+  plano mestre. · summary
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project && git push -q origin feature/phase-03-videos && git log
+      --oneline -1 origin…)
+  ⎿  (No output)
+
+⏺ Updated plan
+  ⎿  /plan to preview
+⏺ A DoD do zero e o teste manual com arquivo grande passaram. Achei um problema
+  de segurança no log do worker e não mexi no código antes da sua resposta.
+
+  O teste manual com 1,40 GiB
+
+  Gerei no container um vídeo de 240 s em 1280x720, com áudio, e um arquivo de 8
+  MiB que não é vídeo. Rodei os dois pela API de verdade.
+
+  ┌────────────────────┬────────────────────────────────────────────────────┐
+  │       Passo        │                     Resultado                      │
+  ├────────────────────┼────────────────────────────────────────────────────┤
+  │ Conta              │ registro, e-mail lido no Mailpit, confirmação e    │
+  │                    │ login: tudo ok                                     │
+  ├────────────────────┼────────────────────────────────────────────────────┤
+  │ Rascunho           │ o vídeo existe como draft/uploading antes de       │
+  │                    │ qualquer byte                                      │
+  ├────────────────────┼────────────────────────────────────────────────────┤
+  │ Upload em partes   │ 23 partes de 64 MiB a 127 MiB/s, sem passar pela   │
+  │ direto no MinIO    │ API                                                │
+  ├────────────────────┼────────────────────────────────────────────────────┤
+  │ Pausa e retomada   │ parei na parte 11. O complete deu 409 e a retomada │
+  │                    │  devolveu só as 12 partes que faltavam             │
+  ├────────────────────┼────────────────────────────────────────────────────┤
+  │                    │ ficou ready em ~1 s, feito pelo container          │
+  │ Processamento      │ video-worker. O ffprobe lê só os trechos           │
+  │                    │ necessários, sem baixar 1,4 GB                     │
+  ├────────────────────┼────────────────────────────────────────────────────┤
+  │ Metadados no banco │ 240 s, 1280x720, h264/aac, título, processed_at e  │
+  │                    │ upload_id limpo                                    │
+  ├────────────────────┼────────────────────────────────────────────────────┤
+  │ Thumbnail          │ JPEG de 335 KiB, público                           │
+  ├────────────────────┼────────────────────────────────────────────────────┤
+  │ URL única          │ publicId de 11 caracteres. Um anônimo recebe 404   │
+  │                    │ num rascunho                                       │
+  ├────────────────────┼────────────────────────────────────────────────────┤
+  │                    │ Range → 206 com Content-Range correto, tanto do    │
+  │ Streaming          │ container quanto do host (o caminho do navegador). │
+  │                    │  Pular para o meio também deu 206                  │
+  ├────────────────────┼────────────────────────────────────────────────────┤
+  │ Download           │ vem como anexo, com o nome acentuado e o emoji     │
+  │                    │ preservados (RFC 5987)                             │
+  ├────────────────────┼────────────────────────────────────────────────────┤
+  │ Arquivo inválido   │ failed / INVALID_MEDIA, e o playback dele dá 409   │
+  └────────────────────┴────────────────────────────────────────────────────┘
+
+  Um detalhe: o teste deixou no banco de dev o vídeo pronto, o inválido e a
+  conta que criou. O down -v já tinha zerado o resto.
+
+  Critérios de aceite do desafio
+
+  ┌───────────────────────────────────────────┬─────────────────────────────┐
+  │                 Critério                  │          Situação           │
+  ├───────────────────────────────────────────┼─────────────────────────────┤
+  │ Doc de decisões (fila, upload, streaming, │ ✅ 16 TDs                   │
+  │  processamento, status)                   │                             │
+  ├───────────────────────────────────────────┼─────────────────────────────┤
+  │ Pasta da fase: context, validation clean, │ ✅ progress em 21/21        │
+  │  plano, progress, library-refs            │ completed                   │
+  ├───────────────────────────────────────────┼─────────────────────────────┤
+  │ Plano com SIs, 5 Tech Specs, Dependency   │ ✅ mas as caixas dos        │
+  │ Map e Deliverables                        │ Deliverables seguem         │
+  │                                           │ desmarcadas                 │
+  ├───────────────────────────────────────────┼─────────────────────────────┤
+  │ Upload grande sem travar, rascunho,       │ ✅ provado no teste manual  │
+  │ thumbnail, URL única, streaming, download │ e no e2e                    │
+  │  e status                                 │                             │
+  ├───────────────────────────────────────────┼─────────────────────────────┤
+  │ Storage, fila e worker no Compose;        │ ✅ provado com o down -v    │
+  │ migration e entidade ligada ao canal      │                             │
+  ├───────────────────────────────────────────┼─────────────────────────────┤
+  │ Testes, tsc e lint                        │ ✅ 367 + 101, todos com 0   │
+  │                                           │ erros                       │
+  ├───────────────────────────────────────────┼─────────────────────────────┤
+  │ Git Flow                                  │ ✅ feature/* saindo da dev, │
+  │                                           │  PR para a dev              │
+  ├───────────────────────────────────────────┼─────────────────────────────┤
+  │ CLAUDE.md coerente com o código           │ ✅ conferido pelo revisor   │
+  ├───────────────────────────────────────────┼─────────────────────────────┤
+  │ IA observável no repo                     │ ✅ exports 14 a 25. Falta o │
+  │                                           │  desta sessão               │
+  └───────────────────────────────────────────┴─────────────────────────────┘
+
+  Achado: assinatura da URL vazando
+
+  Quando o arquivo é inválido, o ffprobe repete a URL de entrada na mensagem de
+  erro, e essa URL inclui a assinatura (X-Amz-Signature). A mensagem vai parar
+  em dois lugares:
+  - no log do worker;
+  - no motivo da falha do job no Redis, que guarda os últimos 1000 jobs com
+    falha.
+
+  Quem lê o log ou o Redis consegue baixar aquele arquivo por até 1 h. O risco é
+  baixo, porque o host é interno (minio:9000) e o acesso é só de leitura
+  daquele objeto. Mesmo assim, guardar credencial em log é ruim.
+
+  Correção proposta: tirar a parte da URL depois do ? (a query string) das
+  mensagens de erro do ffprobe/ffmpeg, mais um teste unitário. Seria o commit
+  fix(videos): redact presigned URL signatures from media tool errors.
+
+  Próximos passos (cada um precisa do seu OK)
+
+  1. Aplicar a correção acima.
+  2. Marcar as caixas de Deliverables do plano.
+  3. Exportar esta sessão. Rode /export 26-leader-phase-03.txt no final, que eu
+     limpo os dados pessoais e commito.
+  4. Tirar o PR #4 de rascunho e fazer o merge na dev (o PR tem 35 commits).
+  5. Merge da dev na main.
+
+  Posso fazer o 1 e o 2?
+
+❯ sim, aplica o 1 e o 2
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project/nestjs-project && sed -n 1,60p
+      src/videos/processing/media-tools.service.spe…)
+  ⎿  (No output)
+
+⏺ Bash(sed -n 60,170p src/videos/processing/media-tools.service.spec.ts | grep
+      -nE "describe|it\(|InvalidMediaError|stderr|toThrow" | head -30)
+  ⎿  (No output)
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Vou corrigir isso removendo a parte da URL depois do ? tanto do stderr quanto
+  do error.message do execFile, já que este último repete a linha de comando.
+  · summary
+
+⏺ Update(nestjs-project/src/videos/processing/media-tools.service.ts)
+  ⎿  Added 1 line, removed 1 line
+      85        `${command} was killed (${error.signal ?? 'no signal'}) a
+          fter the ${MEDIA_TOOL_TIMEOUT_MS} ms timeout`,
+      86      );
+      87    }
+      88 -  const detail = stderr.trim() || error.message;               
+      88 +  const detail = redactUrlQueries(stderr.trim() || error.messag
+         +e);                                                            
+      89    if (INVALID_MEDIA_STDERR_MARKERS.some((marker) => stderr.incl
+          udes(marker))) {
+      90      return new InvalidMediaError(`${command} cannot read the in
+          put: ${detail}`);
+      91    }
+
+⏺ Update(nestjs-project/src/videos/processing/media-tools.service.ts)
+  ⎿  Added 12 lines
+       93      `${command} failed (exit ${String(error.code)}): ${detail}
+           `,
+       94    );
+       95  }
+       96 +                                                              
+       97 +/**                                                           
+       98 + * The input is a presigned URL, and ffprobe/ffmpeg echo it in
+          + stderr (as does                                              
+       99 + * `execFile` in `error.message`). Its query string carries th
+          +e signature, and                                              
+      100 + * these messages reach the worker log and the job's `failedRe
+          +ason` in Redis.                                               
+      101 + */                                                           
+      102 +function redactUrlQueries(text: string): string {             
+      103 +  return text.replace(                                        
+      104 +    /(https?:\/\/[^\s?]+)\?\S*?(?=:\s|\s|$)/g,                
+      105 +    '$1?<redacted>',                                          
+      106 +  );                                                          
+      107 +}                                                             
+
+⏺ Update(nestjs-project/src/videos/processing/media-tools.service.spec.ts)
+  ⎿  Couldn't edit file
+
+⏺ Update(nestjs-project/src/videos/processing/media-tools.service.spec.ts)
+  ⎿  Added 31 lines
+      120          MediaToolTransientError,
+      121        );
+      122      });
+      123 +                                                              
+      124 +    it('should redact the presigned URL query string from inva
+          +lid-media errors', async () => {                              
+      125 +      const signedUrl =                                       
+      126 +        'http://minio:9000/videos/abc/source?X-Amz-Algorithm=A
+          +WS4-HMAC-SHA256&X-Amz-Signature=deadbeef&x-id=GetObject';     
+      127 +      nextRun(                                                
+      128 +        { code: 1 },                                          
+      129 +        '',                                                   
+      130 +        `${signedUrl}: Invalid data found when processing inpu
+          +t`,                                                           
+      131 +      );                                                      
+      132 +                                                              
+      133 +      const error = await service.probe(signedUrl).catch((e: E
+          +rror) => e);                                                  
+      134 +                                                              
+      135 +      expect(error).toBeInstanceOf(InvalidMediaError);        
+      136 +      expect((error as Error).message).toBe(                  
+      137 +        'ffprobe cannot read the input: http://minio:9000/vide
+          +os/abc/source?<redacted>: Invalid data found when processing i
+          +nput',                                                        
+      138 +      );                                                      
+      139 +    });                                                       
+      140 +                                                              
+      141 +    it('should redact the presigned URL query string when only
+          + error.message names the input', async () => {                
+      142 +      const signedUrl =                                       
+      143 +        'http://minio:9000/videos/abc/source?X-Amz-Signature=d
+          +eadbeef';                                                     
+      144 +      nextRun({ code: 1, message: `Command failed: ffprobe -i 
+          +${signedUrl}` });                                             
+      145 +                                                              
+      146 +      const error = await service.probe(signedUrl).catch((e: E
+          +rror) => e);                                                  
+      147 +                                                              
+      148 +      expect(error).toBeInstanceOf(MediaToolTransientError);  
+      149 +      expect((error as Error).message).not.toContain('X-Amz-Si
+          +gnature');                                                    
+      150 +      expect((error as Error).message).toContain(             
+      151 +        'http://minio:9000/videos/abc/source?<redacted>',     
+      152 +      );                                                      
+      153 +    });                                                       
+      154    });
+      155 
+      156    describe('extractFrame', () => {
+
+⏺ Bash(docker compose exec -T nestjs-api npx jest
+      src/videos/processing/media-tools 2>&1 | grep -E "✓|✕|Tests:|redact" |
+      tail -20)
+  ⎿  (No output)
+
+⏺ Bash(docker compose exec -T nestjs-api npx jest
+      src/videos/processing/media-tools --verbose 2>&1 | grep -E
+      "redact|PASS|FAIL|Tests:"; git stash push -q src/videos/pr…)
+  ⎿  (No output)
+
+⏺ Os dois testes novos falham sem a correção e passam com ela. Reinicio o worker
+  para carregar o código novo e passo para os Deliverables.
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project && docker compose -f nestjs-project/compose.yaml restart
+      video-worker 2>&1 |…)
+  ⎿  (No output)
+
+⏺ Bash(sed -n 1186,1222p docs/phases/phase-03-videos/phase-03-videos.md | sed -n
+      '1,4p;24,37p'; echo ----; tail -25
+      docs/phases/phase-03-videos/progress.md)
+  ⎿  (No output)
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project/nestjs-project && docker compose exec -T nestjs-api npm test
+      2>&1 | grep -E…)
+  ⎿  (No output)
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project && git add
+      nestjs-project/src/videos/processing/media-tools.service.ts nestj…)
+  ⎿  Updated docs/phases/phase-03-videos/phase-03-videos.md +25 -25
+      1188 
+      1189  ## Deliverables
+      1190 
+      1191 -- [ ] SI-03.1 — Infra: dependências, namespaces de configuraç
+           -ão e variáveis de ambiente                                   
+      1192 -- [ ] SI-03.2 — Infra: FFmpeg na imagem dev e serviços redis,
+           - minio e minio-init no Compose                               
+      1193 -- [ ] SI-03.3 — Infra: isolamento do ambiente de teste e `--r
+           -unInBand` no `test:e2e`                                      
+      1194 -- [ ] SI-03.4 — Entidade `Video`, migration `CreateVideos` e 
+           -ajustes nos testes existentes                                
+      1195 -- [ ] SI-03.5 — Módulo de storage (adapter S3 com client inte
+           -rno e público)                                               
+      1196 -- [ ] SI-03.6 — Módulo de fila (BullMQ) compartilhado entre A
+           -PI e worker                                                  
+      1197 -- [ ] SI-03.7 — Fundações do domínio de vídeos (exceções, `pu
+           -blicId`, resposta e lookup de canal)                         
+      1198 -- [ ] SI-03.8 — Endpoint POST /videos/uploads                
+      1199 -- [ ] SI-03.9 — Endpoint POST /videos/:id/upload/part-urls   
+      1200 -- [ ] SI-03.10 — Endpoint POST /videos/:id/upload/complete   
+      1201 -- [ ] SI-03.11 — Endpoint DELETE /videos/:id/upload          
+      1202 -- [ ] SI-03.12 — Endpoint GET /videos/:id                    
+      1203 -- [ ] SI-03.13 — Guard de autenticação opcional (`@OptionalAu
+           -th`)                                                         
+      1204 -- [ ] SI-03.14 — Endpoint GET /videos/:publicId/playback     
+      1205 -- [ ] SI-03.15 — Endpoint GET /videos/:publicId/download     
+      1206 -- [ ] SI-03.16 — Infra: `WorkerModule`, entrypoint `src/worke
+           -r.ts` e serviço `video-worker`                               
+      1207 -- [ ] SI-03.17 — Ferramentas de mídia: wrapper `ffprobe`/`ffm
+           -peg` e fixtures                                              
+      1208 -- [ ] SI-03.18 — Consumer `process-video` (metadados e thumbn
+           -ail)                                                         
+      1209 -- [ ] SI-03.19 — Varredura de manutenção (`video-maintenance`
+           -)                                                            
+      1210 -- [ ] SI-03.20 — E2E do pipeline completo (upload → processam
+           -ento → streaming/download)                                   
+      1211 -- [ ] SI-03.21 — Documentação: `CLAUDE.md` (raiz e `nestjs-pr
+           -oject`) e `openapi.json`                                     
+      1191 +- [x] SI-03.1 — Infra: dependências, namespaces de configuraç
+           +ão e variáveis de ambiente                                   
+      1192 +- [x] SI-03.2 — Infra: FFmpeg na imagem dev e serviços redis,
+           + minio e minio-init no Compose                               
+      1193 +- [x] SI-03.3 — Infra: isolamento do ambiente de teste e `--r
+           +unInBand` no `test:e2e`                                      
+      1194 +- [x] SI-03.4 — Entidade `Video`, migration `CreateVideos` e 
+           +ajustes nos testes existentes                                
+      1195 +- [x] SI-03.5 — Módulo de storage (adapter S3 com client inte
+           +rno e público)                                               
+      1196 +- [x] SI-03.6 — Módulo de fila (BullMQ) compartilhado entre A
+           +PI e worker                                                  
+      1197 +- [x] SI-03.7 — Fundações do domínio de vídeos (exceções, `pu
+           +blicId`, resposta e lookup de canal)                         
+      1198 +- [x] SI-03.8 — Endpoint POST /videos/uploads                
+      1199 +- [x] SI-03.9 — Endpoint POST /videos/:id/upload/part-urls   
+      1200 +- [x] SI-03.10 — Endpoint POST /videos/:id/upload/complete   
+      1201 +- [x] SI-03.11 — Endpoint DELETE /videos/:id/upload          
+      1202 +- [x] SI-03.12 — Endpoint GET /videos/:id                    
+      1203 +- [x] SI-03.13 — Guard de autenticação opcional (`@OptionalAu
+           +th`)                                                         
+      1204 +- [x] SI-03.14 — Endpoint GET /videos/:publicId/playback     
+      1205 +- [x] SI-03.15 — Endpoint GET /videos/:publicId/download     
+      1206 +- [x] SI-03.16 — Infra: `WorkerModule`, entrypoint `src/worke
+           +r.ts` e serviço `video-worker`                               
+     … +16 lines (ctrl+o to expand)
+
+⏺ As 25 caixas de Deliverables estão marcadas: os 21 SIs e as 4 verificações de
+  suíte. Agora registro a verificação da E5 no progress.md.
+
+⏺ Bash(cat >> docs/phases/phase-03-videos/progress.md <<'EOF'…)
+  ⎿  Updated docs/phases/phase-03-videos/progress.md +11
+      233  - **Build:** `docker compose exec nestjs-api npm run build` →
+           exit 0 (`dist/main.js`, `dist/worker.js`)
+      234  - **Leftovers:** `videos-test`/`thumbnails-test` have 0 object
+           s and 0 incomplete uploads (`mc ls --incomplete --recursive`).
+            Redis has only the two empty `test:*:meta` keys. `docker comp
+           ose ps`: db, mailpit, minio (healthy), redis (healthy, no host
+            port), nestjs-api and video-worker `running` (`RestartCount=0
+           `), minio-init `Exited (0)`. The `video-worker` log shows no j
+           ob activity from the test runs.
+      235  - **Block W4.6 commits:** `fix(videos): bound sweep job retent
+           ion in Redis`, `feat(videos): SI-03.20 …`, `chore(compose): st
+           op publishing redis port to the host`, `docs: SI-03.21 …`, and
+            this closing commit.
+      236 +                                                              
+      237 +### Closing verification (leader, E5)                         
+      238 +- **W4.6 gate fixes:** `test(videos): close pipeline worker ev
+          +en if queue wipe fails and pin thumbnail URL to the test bucke
+          +t`. In `stopVideoPipeline`, `worker.close()` now sits in its o
+          +wn `finally`, so a failed queue wipe no longer leaves consumer
+          +s writing while the app closes. The pipeline e2e asserts the t
+          +humbnail URL is exactly `minio.localhost:9000/thumbnails-test/
+          +{id}/default.jpg` instead of accepting any string.            
+      239 +- **DoD from scratch:** `docker compose down -v` → `up -d --bu
+          +ild` → `npm ci` → `migration:run` (3 migrations) → `restart vi
+          +deo-worker`. Every service came up and `minio-init` exited 0. 
+          +Probes OK: `pg_isready`, `redis-cli ping`, MinIO 200 from the 
+          +host and via `minio.localhost` from the container. The 4 bucke
+          +ts exist (thumbnails public-read, videos private) and ffmpeg i
+          +s 5.1.9. Results: 367/367 unit+integration, 101/101 e2e, `tsc`
+          +/lint/build exit 0.                                           
+      240 +- **Manual smoke against the running stack** (dev server + `vi
+          +deo-worker` container, prefix `bull`):                        
+      241 +  - **Upload:** a 1.40 GiB, 240 s, 1280x720 h264/aac file. Pre
+          +-registered as `draft`/`uploading` before any byte. Sent as 23
+          + parts of 64 MiB straight to MinIO at ~127 MiB/s. After part 1
+          +1 the upload paused: `complete` → `409 UPLOAD_INCOMPLETE`, and
+          + `part-urls` returned only the 12 missing parts.              
+      242 +  - **Processing:** `complete` → `202`, and the row reached `r
+          +eady` in ~1 s. ffprobe/ffmpeg read the presigned source with R
+          +ange requests, not a full download. The DB row has `duration_s
+          +econds = 240`, 1280x720, h264/aac, `processed_at` set and `upl
+          +oad_id` cleared. The thumbnail is a public 335 KiB JPEG.      
+      243 +  - **Access:** anonymous playback of the draft → `404`. Owner
+          + playback → `200` + `no-store`. `Range: bytes=0-1023` → `206` 
+          +with the correct `Content-Range`, both from the container and 
+          +from the host (the browser path), and a 1 MiB range in the mid
+          +dle → `206`. Download → `attachment` with an RFC 5987 UTF-8 fi
+          +lename (accents and emoji preserved).                         
+      244 +  - **Error path:** an 8 MiB random file → `failed`/`INVALID_M
+          +EDIA`, and its playback → `409 VIDEO_NOT_READY`.              
+      245 +- **Smoke finding, fixed:** `fix(videos): redact presigned URL
+          + signatures from media tool errors`. ffprobe/ffmpeg echo the i
+          +nput URL in stderr, and so does `execFile` in `error.message`.
+          + The signed query string therefore reached the worker log and 
+          +the job's `failedReason` in Redis. `classifyFailure` now repla
+          +ces any URL query string with `?<redacted>`. Two unit tests co
+          +ver it, and both fail without the fix. 369/369 unit+integratio
+          +n, 101/101 e2e, `tsc`/lint 0.                                 
+      246 +- **Known residual (plan, line 1138):** the e2e suites clean t
+          +ables in `beforeEach`, the inherited pattern, so the last suit
+          +e's rows stay in the DB shared with dev. The dev worker's swee
+          +p marks such a row `failed` once it ages past the threshold, b
+          +ecause its source lives in `videos-test` and not in `videos`. 
+          +This is harmless and documented.                              
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Bash(S=/private/tmp/claude-501/-Users-USER-Documents-projects-ful
+      l-cycle-mba-ia-greenfield-project/55b02c80-f286-4d81-ad0c-2effe3091a3d/scr
+      atchpad && py…)
+  ⎿  (No output)
+
+⏺ O PR #4 já não está mais em rascunho. Corrijo a frase de abertura do corpo,
+  que ainda dizia "draft PR", e ajusto os números da DoD para ficarem exatos.
+
+⏺ Bash(S=/private/tmp/claude-501/-Users-USER-Documents-projects-ful
+      l-cycle-mba-ia-greenfield-project/55b02c80-f286-4d81-ad0c-2effe3091a3d/scr
+      atchpad && py…)
+  ⎿  (No output)
+
+⏺ Updated plan
+  ⎿  /plan to preview
+⏺ Apliquei os dois itens, e eles estão publicados na branch.
+
+  1. Assinatura fora dos erros (ceaff6e): as mensagens de erro do ffprobe e do
+  ffmpeg agora trocam a parte da URL depois do ? por ?<redacted>. A troca vale
+  tanto para o texto de erro que a ferramenta imprime quanto para a mensagem do
+  execFile, que repete a linha de comando com a URL.
+  - Os dois testes unitários novos falham sem a correção e passam com ela.
+  - Suíte completa depois da mudança: unit+int 369/369, e2e 101/101, tsc e
+    lint 0.
+  - Reiniciei o video-worker para ele rodar o código novo.
+
+  2. Deliverables (fd9133f): marquei as 25 caixas do plano, que são os 21 SIs e
+  as 4 suítes. No progress.md registrei uma seção "Closing verification" com:
+  - os ajustes de teste;
+  - a DoD a partir de um ambiente recriado do zero;
+  - os números do teste manual com o arquivo de 1,4 GiB;
+  - a correção da assinatura;
+  - o resíduo de dados que os testes deixam no banco de dev.
+
+  PR #4: o corpo foi atualizado, com E4 e E5 marcados e 37 commits. Ele já não
+  está mais em rascunho: imagino que você o tirou desse estado. A frase de
+  abertura, que ainda dizia "draft", também foi corrigida.
+
+  O que falta, na ordem:
+  1. Export desta sessão: rode /export 26-leader-phase-03.txt. Eu movo o arquivo
+     para _claude-sessions/, limpo os dados pessoais, commito e publico.
+  2. Merge do PR #4 na dev. Recomendo um merge commit, como no #3, porque
+     preserva um commit por SI, o que é evidência do processo para o desafio.
+  3. PR da dev para a main e o merge dele.
+
+  Os passos 2 e 3 só com o seu OK explícito. Se quiser, já pode autorizar os
+  dois de uma vez depois do export.
+
+❯ de um ultimo double check, ao mergear meu PR todos os requsitos do meu
+  projeto estão sendo cumpridos??
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Vou conferir cada critério de aceite do enunciado direto no repositório, em
+  vez de confiar no que já registrei no plano mestre.
+
+  Listed 2 directories (ctrl+o to expand)
+
+⏺ Bash(echo "== 10GiB in tests"; grep -rln "10737418240\|10 \* 1024 \*\* 3\|10
+      \* GiB\|TEN_GIB" nestjs-project/src nestjs-project/test | head; echo "==
+      git flow"; git…)
+  ⎿  (No output)
+
+⏺ Há 5 commits seus que já estão na main. Preciso saber se entraram por merge de
+  branch ou direto na main.
+
+⏺ Bash(echo "-- first-parent non-merge commits on main by me (direct commits):";
+      git log origin/main --first-parent --no-merges --author=luguin444
+      --oneline; echo "(en…)
+  ⎿  (No output)
+
+⏺ Nenhum dos cinco commits foi direto na main, todos entraram via merge de
+  bugfix/* e feature/* pelo dev. Ainda faltam a checagem de arquivos sensíveis
+  versionados, de "TBD" nas docs e do estado da árvore. · summary
+
+⏺ Bash(echo "== sensitive files tracked:"; git ls-files | grep -E
+      '(^|/)\.env$|\.pem$|id_rsa|credentials' || echo none; echo "== TBD
+      leftovers:"; grep -rn "TBD" README…)
+  ⎿  Error: Exit code 1
+     == sensitive files tracked:
+     none
+     == TBD leftovers:
+     == personal data in transcripts:
+     (eval):1: no matches found: --include=*.txt
+
+⏺ Bash(grep -n "TBD" docs/project-plan.md README.md | head -5; echo "== personal
+      data:"; grep -rlE "USER|USER-EMAIL|EMAIL-DOMAIN"
+      _claude-sessions do…)
+  ⎿  (No output)
+
+⏺ Sim: o código atende a todos os critérios de aceite e não dispara nenhuma das
+  reprovações automáticas. Só fica entregue de fato quando chegar à main, então
+  o merge no PR #4 sozinho não basta. Conferi cada item direto no repositório.
+
+  Critérios de aceite
+
+  Critério: Doc de decisões com fila, upload, streaming, processamento e
+    status
+  Evidência: technical-decisions-phase-03-videos.md com status: decided e 16
+    TDs. Nenhum ficou pending. Os cinco temas do enunciado são TD-01, TD-05,
+    TD-10, TD-03/04 e TD-12
+  ────────────────────────────────────────
+  Critério: Pasta da fase completa
+  Evidência: Tem context.md, validation.md (clean), phase-03-videos.md,
+    progress.md (completed) e library-refs.md
+  ────────────────────────────────────────
+  Critério: Formato do plano
+  Evidência: 21 SIs SI-03.x; Data Model, API Contracts, Authorization Matrix,
+    Error Catalog e Events/Messages; Dependency Map; Deliverables marcados
+  ────────────────────────────────────────
+  Critério: Upload de até 10 GB sem travar e com rascunho
+  Evidência: O limite padrão é 10 GiB: com partes de 64 MiB dá 160 partes,
+    abaixo do máximo de 10.000 do S3. O arquivo vai direto ao storage. Teste
+    manual com 1,4 GiB: rascunho criado antes do primeiro byte
+  ────────────────────────────────────────
+  Critério: Processamento, metadados e thumbnail
+  Evidência: O worker preencheu duração, resolução, codecs e uma thumbnail
+    pública
+  ────────────────────────────────────────
+  Critério: URL única
+  Evidência: publicId aleatório de 11 caracteres, com índice único no banco e
+    nova tentativa em caso de colisão
+  ────────────────────────────────────────
+  Critério: Streaming e download
+  Evidência: Range → 206, testado também do host (o caminho do navegador). O
+    download vem como anexo
+  ────────────────────────────────────────
+  Critério: Status no banco
+  Evidência: uploading/processing/ready/failed, com draft à parte (ver
+    ressalva abaixo)
+  ────────────────────────────────────────
+  Critério: Storage, fila e worker no Compose
+  Evidência: minio, redis e video-worker sobem com o backend, provado com down
+    -v
+  ────────────────────────────────────────
+  Critério: Migration e entidade ligada ao canal
+  Evidência: 1795641136433-CreateVideos.ts, com FK channel_id → channels
+  ────────────────────────────────────────
+  Critério: Testes verdes nos 3 níveis
+  Evidência: unit+int 369/369, e2e 101/101, contra Postgres, MinIO, Redis e
+    FFmpeg reais
+  ────────────────────────────────────────
+  Critério: DoD
+  Evidência: tsc 0, lint 0 e build 0, inclusive no ambiente recriado do zero
+  ────────────────────────────────────────
+  Critério: Git Flow
+  Evidência: Nenhum commit direto na main: todos os seus commits nela entraram
+    por merge vindo da dev
+  ────────────────────────────────────────
+  Critério: CLAUDE.md coerente com o código
+  Evidência: Seção "Vídeos" e seção "Video Worker". O revisor conferiu cada
+    arquivo, comando e endpoint citado. Não sobrou nenhum "TBD"
+
+  Também conferi:
+  - o fork é público;
+  - não há .env nem credenciais versionados;
+  - os transcripts (_claude-sessions/14 a 25) estão sem dados pessoais;
+  - a árvore está limpa.
+
+  Única ressalva de interpretação: o enunciado fala em "rascunho → processando →
+  pronto/erro". O projeto usa dois campos: o andamento técnico
+  (processing_status) e a publicação (publication_status = draft). A
+  correspondência com os termos do desafio está documentada no TD-12 e na tabela
+  da seção "Vídeos" do nestjs-project/CLAUDE.md, então quem avaliar acha a
+  ponte. Não vejo risco de reprovação por isso.
+
+  O que falta para valer
+
+  O branch padrão do fork é a main, e é ela que quem avaliar vai abrir. Hoje a
+  main ainda não tem a Fase 03, nem o planejamento, que só está na dev. Ordem:
+
+  1. /export 26-leader-phase-03.txt desta sessão. Não é exigido, mas completa a
+     trilha de IA observável. Eu limpo os dados pessoais e commito na feature
+     antes do merge.
+  2. Merge do PR #4 na dev, como merge commit para preservar um commit por SI.
+  3. PR da dev para a main e o merge dele.
+
+  Os passos 2 e 3 só com o seu OK. Se quiser, autorize os dois juntos depois do
+  export.

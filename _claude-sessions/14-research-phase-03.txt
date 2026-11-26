@@ -1,0 +1,386 @@
+
+❯ <browser_instruction># Claude in Chrome browser automation
+
+  You have access to browser automation tools (mcp__claude-in-chrome__*) for
+  interacting with web pages in Chrome. Follow these guidelines for effective
+  browser automation.
+
+  ## Loading deferred tools
+
+  If the mcp__claude-in-chrome__* tools are deferred (must be loaded via
+  ToolSearch before use), load every tool you expect to need in ONE ToolSearch
+  call — the select query accepts a comma-separated list — never one call per
+  tool. Start with the core set:
+
+  ToolSearch with query
+  "select:mcp__claude-in-chrome__tabs_context_mcp,mcp__claude-in-chrome__naviga
+  te,mcp__claude-in-chrome__computer,mcp__claude-in-chrome__read_page,mcp__clau
+  de-in-chrome__tabs_create_mcp,mcp__claude-in-chrome__tabs_close_mcp"
+
+  Add task-specific tools to the same call when the task obviously needs them:
+  read_console_messages / read_network_requests for debugging, form_input for
+  forms, gif_creator for recordings, javascript_tool for page scripting.
+
+  ## GIF recording
+
+  When performing multi-step browser interactions that the user may want to
+  review or share, use mcp__claude-in-chrome__gif_creator to record them.
+
+  You must ALWAYS:
+  * Capture extra frames before and after taking actions to ensure smooth
+  playback
+  * Name the file meaningfully to help the user identify it later (e.g.,
+  "login_process.gif")
+
+  ## Console log debugging
+
+  You can use mcp__claude-in-chrome__read_console_messages to read console
+  output. Console output may be verbose. If you are looking for specific log
+  entries, use the 'pattern' parameter with a regex-compatible pattern. This
+  filters results efficiently and avoids overwhelming output. For example, use
+  pattern: "[MyApp]" to filter for application-specific logs rather than
+  reading all console output.
+
+  ## Alerts and dialogs
+
+  IMPORTANT: Do not trigger JavaScript alerts, confirms, prompts, or browser
+  modal dialogs through your actions. These browser dialogs block all further
+  browser events and will prevent the extension from receiving any subsequent
+  commands. Instead, when possible, use console.log for debugging and then use
+  the mcp__claude-in-chrome__read_console_messages tool to read those log
+  messages. If a page has dialog-triggering elements:
+  1. Avoid clicking buttons or links that may trigger alerts (e.g., "Delete"
+  buttons with confirmation dialogs)
+  2. If you must interact with such elements, warn the user first that this may
+  interrupt the session
+  3. Use mcp__claude-in-chrome__javascript_tool to check for and dismiss any
+  existing dialogs before proceeding
+
+  If you accidentally trigger a dialog and lose responsiveness, inform the user
+  they need to manually dismiss it in the browser.
+
+  ## Avoid rabbit holes and loops
+
+  When using browser automation tools, stay focused on the specific task. If
+  you encounter any of the following, stop and ask the user for guidance:
+  - Unexpected complexity or tangential browser exploration
+  - Browser tool calls failing or returning errors after 2-3 attempts
+  - No response from the browser extension
+  - Page elements not responding to clicks or input
+  - Pages not loading or timing out
+  - Unable to complete the browser task despite multiple approaches
+
+  Explain what you attempted, what went wrong, and ask how the user would like
+  to proceed. Do not keep retrying the same failing browser action or explore
+  unrelated pages without checking in first.
+
+  ## Tab context and session startup
+
+  IMPORTANT: At the start of each browser automation session, call
+  mcp__claude-in-chrome__tabs_context_mcp first to get information about the
+  user's current browser tabs. Use this context to understand what the user
+  might want to work with before creating new tabs.
+
+  Never reuse tab IDs from a previous/other session. Follow these guidelines:
+  1. Only reuse an existing tab if the user explicitly asks to work with it
+  2. Otherwise, create a new tab with mcp__claude-in-chrome__tabs_create_mcp
+  3. If a tool returns an error indicating the tab doesn't exist or is invalid,
+  call tabs_context_mcp to get fresh tab IDs
+  4. When a tab is closed by the user or a navigation error occurs, call
+  tabs_context_mcp to see what tabs are available</browser_instruction>
+
+❯ Contexto: Fase 03 do StreamTube (Upload e Processamento de Vídeos), branch
+  feature/phase-03-videos. Plano mestre:
+  ~/.claude/plans/tenho-o-seguinte-trabalho-indexed-canyon.md. Leia só a Etapa
+  1.
+
+  Commit local autorizado no checkpoint desta etapa:
+  - mensagem: docs: research technical decisions for phase 03 videos
+  - sem Co-Authored-By
+  - git add só com os arquivos explícitos
+  - nada de push
+
+  Regras desta sessão:
+  - O doc deve se chamar technical-decisions-phase-03-videos.md, com
+  scope_type: phase, related_phases: [3] e um slice só.
+  - Cada um dos 9 bullets de docs/project-plan.md:73-81 precisa aparecer no
+  **Capability:** de algum TD, inclusive "URL única" e "Download".
+  - Decisões obrigatórias:
+    - tecnologia da fila;
+    - estratégia de upload de até 10GB sem passar pela API;
+    - como o worker roda e como extrai metadados e thumbnail (FFmpeg/ffprobe);
+    - formato da URL única;
+    - streaming (Range/206) e download;
+    - ciclo de status e tratamento de falha.
+  - O storage já está definido (S3/MinIO). Decida só o como: buckets, chaves e
+  URLs pré-assinadas.
+  - Restrições do código atual que a pesquisa deve ponderar:
+    - throttler global de 10 req/min
+  (nestjs-project/src/auth/auth.module.ts:29), que afeta Range e upload em
+  partes;
+    - JwtAuthGuard global: acesso anônimo exige @Public();
+    - não existe nenhuma infra assíncrona hoje;
+    - o Dockerfile.dev não tem ffmpeg;
+    - tensão entre o diagrama (docs/diagrams/software-arch.mermaid: "Frontend
+  streams from Object Storage") e o README ("BFF estrito"); isso precisa de
+  decisão;
+    - envelope de erro HTTP {statusCode,error,message}.
+  - Considere os Pontos de Atenção (docs/project-plan.md:165-169): upload
+  resumível, URL curta, custo/crescimento de storage, playback sem download
+  completo.
+  - Testabilidade: como testar "10GB" sem 10GB (limites configuráveis +
+  multipart com partes pequenas). Fila, worker e storage reais no Compose para
+  integração/e2e.
+  - Confira as versões das libs via context7. Nada sem fonte.
+
+  Ao terminar:
+  1. commit do checkpoint;
+  2. /export _claude-sessions/14-research-phase-03.txt (revise se há dado
+  pessoal antes de commitar o export);
+  3. resumo de 5 linhas para o líder.
+     /research  phase 03
+
+  Listed 1 directory (ctrl+o to expand)
+
+⏺ Bash(sed -n 82,113p
+      ~/.claude/plans/tenho-o-seguinte-trabalho-indexed-canyon.md; ls
+      .claude/skills/*; ls ~/.claude/commands ~/.claude/skills 2>/dev/null |
+      head -40)
+  ⎿  (No output)
+
+⏺ The project has a research skill in .claude/skills/research/SKILL.md. It isn't
+  in the registered list, so I'll read it and follow it directly.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Now the project context: Phase 03 in the plan, prior decisions, and the code
+  constraints.
+
+⏺ Bash(cat -n docs/project-plan.md | sed -n 1,200p)
+  ⎿  (No output)
+
+  Listed 2 directories (ctrl+o to expand)
+
+⏺ Bash(for f in docs/decisions/*.md; do echo "=== $f"; sed -n 1,12p "$f"; grep
+      -nE "^## TD|^\*\*Decision:\*\*|^\*\*Libraries:\*\*" "$f"; done)
+  ⎿  (No output)
+
+⏺ Bash(sed -n 120,175p
+      docs/decisions/technical-decisions-next-frontend-config-base.md; sed -n
+      1,70p docs/decisions/technical-decisions-phase-02-auth.md; sed -n 186,24…)
+  ⎿  (No output)
+
+⏺ Bash(ls docs/phases docs/phases/* docs/inventories; cat
+      next-frontend/package.json | sed -n 1,80p; cat
+      .claude/rules/next-frontend-bff-api.md | head -80)
+  ⎿  (No output)
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+⏺ Next I'll check how the throttler is keyed behind the BFF, the entity ID
+  types, and the module system for ESM-only libs, before the external research.
+  · summary
+
+  Listed 1 directory · 1 failed (ctrl+o to expand)
+
+⏺ Bash(docker image inspect node:25.6.0-slim >/dev/null 2>&1 && docker run --rm
+      node:25.6.0-slim sh -c 'cat /etc/os-release | head -3; apt-get update -qq
+      >/dev/null 2>…)
+  ⎿  (No output)
+
+⏺ Bash(grep -rn "PrimaryGeneratedColumn\|PrimaryColumn" nestjs-project/src |
+      grep -v spec; sed -n 1,25p nestjs-project/tsconfig.json; grep -rln
+      "Public()" nestjs-proje…)
+  ⎿  (No output)
+
+⏺ Bash(docker run --rm node:25.6.0-slim sh -c 'grep PRETTY /etc/os-release;
+      apt-get update -qq >/dev/null 2>&1; apt-cache policy ffmpeg | head -3'
+      2>&1 | tail -5)
+  ⎿  Running in the background (↓ to manage)
+
+  Called context7 4 times (ctrl+o to expand)
+
+⏺ Background command "Pull base image and check Debian release and ffmpeg
+  version" completed (exit code 0)
+
+⏺ Bash(cat /private/tmp/claude-501/-Users-USER-Documents-projects-f
+      ull-cycle-mba-ia-greenfield-project/75594082-8400-4b6a-b73b-603471d60c72/t
+      asks/bnmn8mvg…)
+  ⎿  (No output)
+
+⏺ Base image is Debian 12 (bookworm), with apt ffmpeg 5.1.9. fluent-ffmpeg is
+  deprecated on npm. Next I'm pulling the primary docs.
+
+  Called context7 4 times (ctrl+o to expand)
+
+⏺ Web Search("MinIO community edition docker image no longer published 2025
+            source only maintenance mode")
+  ⎿  Did 1 search in 5s
+
+⏺ Web Search("Amazon S3 multipart upload limits part size 5 MiB 10,000 parts
+            maximum object size")
+  ⎿  Did 1 search in 6s
+⏺ Web Search("fluent-ffmpeg repository archived deprecated 2025")
+  ⎿  Did 1 search in 4s
+
+⏺ Web Search("MinIO bucket CORS PutBucketCors MINIO_API_CORS_ALLOW_ORIGIN ETag
+            expose header browser multipart upload")
+  ⎿  Did 1 search in 6s
+
+⏺ MinIO's official images were discontinued, which affects the Compose setup, so
+  I'm confirming that from primary sources.
+
+  Called firecrawl (ctrl+o to expand)
+
+⏺ Bash((docker manifest inspect quay.io/minio/minio:latest >/dev/null 2>&1 &&
+      echo "quay latest: available") ; docker run --rm
+      quay.io/minio/minio:latest --version 2>&…)
+  ⎿  (No output)
+
+⏺ Bash(for t in minio/minio:RELEASE.2025-09-07T16-13-09Z
+      minio/minio:RELEASE.2025-04-22T22-12-26Z
+      quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z minio/mc:latest bitn…)
+  ⎿  (No output)
+
+⏺ Bash(docker run --rm cgr.dev/chainguard/minio:latest --version 2>&1 | tail -3;
+      docker run --rm --entrypoint sh cgr.dev/chainguard/minio:latest -c 'echo
+      has-shell' 2>…)
+  ⎿  (No output)
+
+⏺ Bash(docker run --rm cgr.dev/chainguard/minio:latest --version 2>&1 | head -2;
+      docker run --rm redis:8-alpine redis-server --version)
+  ⎿  (No output)
+
+  Called context7 3 times (ctrl+o to expand)
+
+⏺ Web Search("MinIO MINIO_API_STALE_UPLOADS_EXPIRY incomplete multipart uploads
+            cleanup default 24h")
+  ⎿  Did 1 search in 5s
+
+⏺ Web Search("S3 presigned URL expiration "at the time of the HTTP request"
+            maximum 7 days Signature Version 4")
+  ⎿  Did 1 search in 5s
+
+⏺ Web Search("ffmpeg protocols documentation http seekable range requests;
+            ffmpeg formats mov movflags faststart")
+  ⎿  Did 1 search in 5s
+
+⏺ Web Search("tusd S3 storage backend multipart upload resumable tus protocol
+            tusd s3store")
+  ⎿  Did 1 search in 7s
+
+⏺ Web Search("Node.js require(esm) stable unflagged 22.12 modules documentation
+            loading ECMAScript modules using require")
+  ⎿  Did 1 search in 5s
+
+⏺ Docs for BullMQ, AWS SDK v3, @nestjs/throttler, pg-boss, AWS limits, MinIO and
+  the base image are checked. Next I'm running a few source checks on
+  ffmpeg/ffprobe and MinIO limits before writing the doc. · summary
+
+⏺ Web Search("ffprobe documentation -print_format json -show_format
+            -show_streams; ffmpeg-protocols http seekable option")
+  ⎿  Did 1 search in 6s
+
+⏺ Web Search("MinIO thresholds and limits minimum part size 5 MiB maximum number
+            of parts 10000 multipart upload")
+  ⎿  Did 1 search in 5s
+
+⏺ Bash(npm view ffmpeg-static version time.modified 2>/dev/null; npm view
+      ffprobe-static version time.modified 2>/dev/null; npm view
+      @ffprobe-installer/ffprobe version…)
+  ⎿  (No output)
+
+⏺ Research is done. Writing the decisions doc now.
+
+⏺ Write(docs/decisions/technical-decisions-phase-03-videos.md)
+  ⎿  Wrote 514 lines to
+     docs/decisions/technical-decisions-phase-03-videos.md
+      1 ---
+      2 scope_type: phase
+      3 related_phases: [3]
+      4 status: pending
+      5 date: 2026-11-24
+      6 scope_description: "Phase 03 — video upload (up to 10GB, direct t
+        o object storage), background processing (queue + FFmpeg worker e
+        xtracting duration/metadata and a thumbnail), unique short video
+        URL, streaming playback (HTTP Range/206) and download. Covers the
+         queue technology, worker runtime, upload protocol, storage layou
+     … +509 lines (~50 KB) (ctrl+o to expand)
+
+⏺ Checking that all 9 bullets appear verbatim in the **Capability:** lines:
+
+⏺ Bash(cd ~/Documents/projects/full-cycle/mba-ia-greenfie
+      ld-project && f=docs/decisions/technical-decisions-phase-03-videos.md;
+      caps=$(grep '^\*…)
+  ⎿  (No output)
+
+⏺ All 9 bullets are covered, with 15 TDs all pending. Now the checkpoint commit:
+
+⏺ Bash(git branch --show-current && git status --short && git add
+      docs/decisions/technical-decisions-phase-03-videos.md && git commit -q -m
+      "docs: research technical d…)  ⎿  (No output)
+
+⏺ Fiz a pesquisa da Etapa 1. O doc tem 15 TDs, todos com Decision: _[pending]_,
+  e foi commitado localmente em 22838ac, sem Co-Authored-By e sem push.
+
+  Arquivo: technical-decisions-phase-03-videos.md
+  (docs/decisions/technical-decisions-phase-03-videos.md), com scope_type:
+  phase, related_phases: [3] e um slice só. Conferi por script: os 9 bullets de
+  project-plan.md:73-81 aparecem literais no **Capability:** de algum TD. "URL
+  única" está no TD-09 e "Download" está nos TD-10 e TD-13.
+
+  Duas descobertas que mudam o plano:
+  - Throttler: ele vale para todas as rotas, não só para o auth, ao contrário do
+    que diz o phase-02-auth/TD-08. Como o BFF não repassa o IP do cliente,
+    todos os usuários dividem a mesma cota de 10 req/min. Por isso o TD-13
+    recomenda @SkipThrottle() nas rotas de vídeo. A correção da identificação do
+    cliente ficou registrada como tarefa separada.
+  - MinIO: a edição gratuita agora só sai como código-fonte. Em 24/11/2026,
+    docker manifest inspect falhou para minio/minio, para as tags fixas
+    RELEASE.2025-*, para quay.io e para bitnami. A imagem da Chainguard resolve.
+    O TD-08 recomenda essa imagem, fixada por digest.
+
+  Passos 2 e 3:
+  - /export: eu não consigo rodar esse comando. Rode /export
+    _claude-sessions/14-research-phase-03.txt e me avise. Aí eu procuro dado
+    pessoal no arquivo (e-mail, caminhos com seu nome) antes de sugerir o commit
+    do export.
+  - Próximo passo do pipeline: /plan-context 03, depois /plan-validate, depois
+    /plan-resolve.
+
+  Resumo de 5 linhas para o líder:
+  W1 (Etapa 1) ok: docs/decisions/technical-decisions-phase-03-videos.md (phase,
+  [3], slice único), commit 22838ac, 15 TDs pending; os 9 bullets estão
+  literais nos Capability.
+  Recomendações: BullMQ+Redis; worker no mesmo código Nest com container próprio
+  e ffmpeg via apt + execFile (fluent-ffmpeg está deprecated); worker lê o
+  vídeo por presigned GET com Range.
+  Upload: S3 multipart com URLs pré-assinadas por parte, orquestrado pela API
+  (rascunho no initiate, fila no complete); limites configuráveis por env para
+  testar "10GB" com 12MiB e partes de 5MiB.
+  Entrega: playback e download por presigned GET direto do storage, pedido a um
+  endpoint @Public via BFF (o BFF estrito vale para a API, não para a mídia);
+  URL única = publicId base64url de 11 chars com UNIQUE.
+  Alertas para o G1: o throttler global de 10/min é dividido por todos os
+  usuários atrás do BFF (TD-13 + task separada); MinIO só sai como código-fonte
+  e as imagens oficiais não resolvem (TD-08 → Chainguard fixada por digest).
+
+  Principais fontes (a lista completa está no fim do doc):
+  - Limites de multipart do S3
+    (https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html)
+  - Validade de URL pré-assinada (https://docs.aws.amazon.com/AmazonS3/latest/us
+    erguide/using-presigned-url.html)
+  - CORS precisa expor o ETag (https://docs.aws.amazon.com/sdk-for-javascript/v3
+    /developer-guide/cors.html)
+  - README do MinIO (https://github.com/minio/minio)
+  - InfoQ sobre o MinIO
+    (https://www.infoq.com/news/2025/12/minio-s3-api-alternatives/)
+  - Imagens MinIO da Chainguard (https://www.chainguard.dev/unchained/secure-and
+    -free-minio-chainguard-containers)
+  - Limites do MinIO (https://docs.min.io/community/minio-object-store/operation
+    s/concepts/thresholds.html)
+  - tusd com S3 (https://tus.github.io/tusd/storage-backends/aws-s3/)
+  - Protocolos do FFmpeg (https://ffmpeg.org/ffmpeg-protocols.html)
+  - Formatos do FFmpeg (faststart) (https://ffmpeg.org/ffmpeg-formats.html)
+  - fluent-ffmpeg no npm (https://www.npmjs.com/package/fluent-ffmpeg)
+  - Node 22.12 com require(esm) (https://nodejs.org/en/blog/release/v22.12.0)
