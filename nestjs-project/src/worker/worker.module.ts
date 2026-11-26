@@ -9,6 +9,9 @@ import { QueueModule } from '../queue/queue.module';
 import { StorageModule } from '../storage/storage.module';
 import { User } from '../users/entities/user.entity';
 import { Video } from '../videos/entities/video.entity';
+import { MediaToolsService } from '../videos/processing/media-tools.service';
+import { VideoProcessingConsumer } from '../videos/processing/video-processing.consumer';
+import { VideoProcessingService } from '../videos/processing/video-processing.service';
 
 /**
  * Root module of the video worker process (`src/worker.ts`): queue consumers
@@ -29,6 +32,11 @@ import { Video } from '../videos/entities/video.entity';
     TypeOrmModule.forFeature([Video, Channel, User]),
     QueueModule,
     StorageModule,
+  ],
+  providers: [
+    MediaToolsService,
+    VideoProcessingService,
+    VideoProcessingConsumer,
   ],
 })
 export class WorkerModule implements OnApplicationShutdown {

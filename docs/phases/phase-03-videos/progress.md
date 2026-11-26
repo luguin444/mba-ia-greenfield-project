@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 17/21 completed
+**SIs:** 18/21 completed
 
 ### SI-03.1 — Infra: dependências, namespaces de configuração e variáveis de ambiente
 - **Status:** completed
@@ -175,9 +175,17 @@
   - New files live in `src/videos/processing/`; the constants (`MEDIA_TOOL_TIMEOUT_MS`, stderr markers, thumbnail offsets) are in `processing.constants.ts` and the error classes in `media-tools.errors.ts` (the plan did not name these files).
 
 ### SI-03.18 — Consumer `process-video` (metadados e thumbnail)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 16 passing (`video-processing.consumer.spec.ts` 6, `video-processing.service.integration-spec.ts` 10 with real Postgres + MinIO + ffprobe/ffmpeg + BullMQ); `worker.module.integration-spec.ts` still 3/3 with the new providers; `tsc --noEmit` 0, eslint 0
+- **Observations:**
+  - The service throws classified errors and never decides about retries. `InvalidMediaError` and the new `SourceObjectMissingError` (`video-processing.errors.ts`, raised when `headObject` returns `null`) are permanent. Everything else is transient. The consumer maps permanent errors to `markFailed(INVALID_MEDIA | PROCESSING_ERROR)` + `UnrecoverableError`. A transient error on the last attempt (`attemptsStarted >= opts.attempts ?? 1`) gets `markFailed(PROCESSING_ERROR)` and is rethrown; before the last attempt it is only rethrown.
+  - Both writes (the `ready` update and `markFailed`) are conditional on `processing_status IN ('processing','ready')`. The integration test fails the row in the middle of the job (inside a `probe` spy), and the job's result is discarded with a warning: a `failed` row is never resurrected. `uploading`/`failed` rows are a logged no-op: no thumbnail is written and the row is unchanged. A re-run on `ready` overwrites the metadata, the thumbnail and `processed_at` without error.
+  - The local frame goes to `os.tmpdir()/streamtube-thumbnail-<uuid>.jpg` and is removed in `finally`. The integration test checks that no such file is left after success, after invalid media and after a failed thumbnail upload (`putObject` spy rejects → transient, row stays `processing`).
+  - Beyond the plan's table, one integration case runs a **real** BullMQ job (test prefix) for `not-a-video.mp4`: the job ends `failed` with `attemptsMade = 1` and `failedReason` containing `INVALID_MEDIA`, proving that `UnrecoverableError` skips the 2 remaining attempts. The 3 attempts with 5 s/10 s backoff for a persistent transient error are covered by the consumer unit test (decision per attempt) and `queue.module.integration-spec.ts` (job options). A real run would wait 15 s; the full pipeline is SI-03.20.
+  - The consumer logs `Consuming "video-processing"` on BullMQ's `ready` event (blocking connection up) and logs each failed attempt. After `docker compose restart video-worker` the log shows `queue prefix "bull"` followed by `Consuming "video-processing"`.
+  - **Test/container isolation checked:** with the container running, a job added to `test:video-processing` stays `waiting` after 6 s and never shows up in the `video-worker` log.
+  - New test support `src/test/videos.ts` (`createChannel`, `insertVideo` in any state with the API's `{id}/source` key, `ageVideo` to backdate `updated_at`), shared with SI-03.19. In the "not resurrected" test, the `probe` spy delegates to a second `MediaToolsService` instance (stateless, no deps), because `bind` is typed `any` here and trips `no-unsafe-*`.
+  - The pg `DeprecationWarning` ("client.query() when the client is already executing a query") printed by this suite also appears in the existing `videos.service.integration-spec.ts`. It comes from the TypeORM/pg stack, not this SI. Out of scope.
 
 ### SI-03.19 — Varredura de manutenção (`video-maintenance`)
 - **Status:** pending
