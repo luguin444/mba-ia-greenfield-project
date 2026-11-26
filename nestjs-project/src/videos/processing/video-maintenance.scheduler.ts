@@ -34,7 +34,17 @@ export class VideoMaintenanceScheduler implements OnApplicationBootstrap {
     await this.maintenanceQueue.upsertJobScheduler(
       VIDEO_MAINTENANCE_SCHEDULER_ID,
       { every: this.config.sweepIntervalMs },
-      { name: VIDEO_MAINTENANCE_SWEEP_JOB, data: {}, opts: { attempts: 1 } },
+      {
+        name: VIDEO_MAINTENANCE_SWEEP_JOB,
+        data: {},
+        // Bounded retention: Redis runs with `noeviction`, and a tick every
+        // 15 min would otherwise leave ~96 finished jobs a day behind.
+        opts: {
+          attempts: 1,
+          removeOnComplete: { count: 50 },
+          removeOnFail: { count: 100 },
+        },
+      },
     );
     this.logger.log(
       `Job Scheduler "${VIDEO_MAINTENANCE_SCHEDULER_ID}" every ${this.config.sweepIntervalMs} ms`,

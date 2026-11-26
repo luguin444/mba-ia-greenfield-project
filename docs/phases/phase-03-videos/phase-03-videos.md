@@ -591,7 +591,7 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 1. Criar `src/videos/processing/video-maintenance.service.ts` com `sweepStaleUploads()`: até 100 linhas `uploading` com `updated_at < now() - VIDEO_UPLOAD_STALE_AFTER_MS`, mais antigas primeiro; claim condicional (`WHERE id = :id AND processing_status = 'uploading'`) para `failed`/`UPLOAD_ABANDONED`/`upload_id = null` e, só quando afetou 1 linha, `abortMultipartUpload` com o `upload_id` anterior (per `phase-03-videos/TD-12`).
 2. `sweepOrphanedProcessing()`: até 100 linhas `processing` com `updated_at < now() - VIDEO_SWEEP_INTERVAL_MS`; `getJob(videoId)` em `video-processing`: ausente → re-add com `processVideoJobOptions`; `failed` → update condicional para `failed`/`PROCESSING_ERROR`; waiting/active/delayed → nada. Erro numa linha é logado e não interrompe o lote (per `phase-03-videos/TD-01`).
 3. Criar `src/videos/processing/video-maintenance.consumer.ts`: `@Processor(VIDEO_MAINTENANCE_QUEUE, { concurrency: 1 })` estendendo `WorkerHost`, chamando as duas varreduras.
-4. Criar `src/videos/processing/video-maintenance.scheduler.ts`: no `onApplicationBootstrap`, `queue.upsertJobScheduler('video-maintenance-sweep', { every: VIDEO_SWEEP_INTERVAL_MS }, { name: 'sweep', data: {}, opts: { attempts: 1 } })` (bullmq v6, sem a API `repeat` legada; `library-refs.md` → bullmq).
+4. Criar `src/videos/processing/video-maintenance.scheduler.ts`: no `onApplicationBootstrap`, `queue.upsertJobScheduler('video-maintenance-sweep', { every: VIDEO_SWEEP_INTERVAL_MS }, { name: 'sweep', data: {}, opts: { attempts: 1, removeOnComplete: { count: 50 }, removeOnFail: { count: 100 } } })` (bullmq v6, sem a API `repeat` legada; `library-refs.md` → bullmq).
 5. Registrar `VideoMaintenanceService`, `VideoMaintenanceConsumer` e `VideoMaintenanceScheduler` no `WorkerModule` (a API nunca declara o scheduler).
 
 **Tests:**
@@ -600,7 +600,7 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 |----------|-------|-----------|
 | `VideoMaintenanceService` | Unit: decisão por estado do job (ausente → re-add; `failed` → `PROCESSING_ERROR`; waiting/active/delayed → nada); erro numa linha não interrompe as demais | `src/videos/processing/video-maintenance.service.spec.ts` |
 | `VideoMaintenanceService` | Integration (Postgres + MinIO + Redis): upload envelhecido → `failed`/`UPLOAD_ABANDONED` e multipart abortado; linha `processing` órfã (enqueue perdido no `complete`) → job `process-video` re-enfileirado com `jobId = videoId`; job `failed` → `PROCESSING_ERROR`; claim perdido para um `complete` concorrente não aborta o multipart | `src/videos/processing/video-maintenance.service.integration-spec.ts` |
-| `VideoMaintenanceScheduler` | Integration (Redis): dois bootstraps resultam em um único Job Scheduler `video-maintenance-sweep` | `src/videos/processing/video-maintenance.scheduler.integration-spec.ts` |
+| `VideoMaintenanceScheduler` | Integration (Redis): dois bootstraps resultam em um único Job Scheduler `video-maintenance-sweep`, com o template salvo trazendo `removeOnComplete: { count: 50 }` e `removeOnFail: { count: 100 }` | `src/videos/processing/video-maintenance.scheduler.integration-spec.ts` |
 
 **Dependencies:** SI-03.16 (`WorkerModule`)
 
@@ -1077,7 +1077,7 @@ Unknown errors default to **transient**, which is bounded by `attempts` and ends
 
 #### video-maintenance sweep
 
-**Queue / scheduler:** `video-maintenance`. Job Scheduler id `video-maintenance-sweep`, repeat `{ every: VIDEO_SWEEP_INTERVAL_MS }`, job template `{ name: 'sweep', data: {}, opts: { attempts: 1 } }` (per `phase-03-videos/TD-12`). bullmq v6 has no legacy `repeat` API, so `upsertJobScheduler` is the only path (`library-refs.md` → bullmq).
+**Queue / scheduler:** `video-maintenance`. Job Scheduler id `video-maintenance-sweep`, repeat `{ every: VIDEO_SWEEP_INTERVAL_MS }`, job template `{ name: 'sweep', data: {}, opts: { attempts: 1, removeOnComplete: { count: 50 }, removeOnFail: { count: 100 } } }` (per `phase-03-videos/TD-12`). bullmq v6 has no legacy `repeat` API, so `upsertJobScheduler` is the only path (`library-refs.md` → bullmq).
 
 **Payload:**
 
@@ -1085,10 +1085,10 @@ Unknown errors default to **transient**, which is bounded by `attempts` and ends
 {}
 ```
 
-**Producer:** `WorkerModule` on bootstrap (`onApplicationBootstrap`) calls `queue.upsertJobScheduler('video-maintenance-sweep', { every: VIDEO_SWEEP_INTERVAL_MS }, { name: 'sweep', data: {}, opts: { attempts: 1 } })`. This is idempotent by scheduler id, so restarts and extra replicas do not stack schedulers. The API never declares it.
+**Producer:** `WorkerModule` on bootstrap (`onApplicationBootstrap`) calls `queue.upsertJobScheduler('video-maintenance-sweep', { every: VIDEO_SWEEP_INTERVAL_MS }, { name: 'sweep', data: {}, opts: { attempts: 1, removeOnComplete: { count: 50 }, removeOnFail: { count: 100 } } })`. This is idempotent by scheduler id, so restarts and extra replicas do not stack schedulers. The API never declares it.
 **Consumer:** `VideoMaintenanceConsumer` — `@Processor('video-maintenance', { concurrency: 1 })`, extends `WorkerHost`, in `WorkerModule`. Each tick is one job handled by one worker.
 **Trigger:** every `VIDEO_SWEEP_INTERVAL_MS` (default 900000 = 15 min).
-**Delivery semantics:** best-effort per tick (`attempts: 1`). A failed tick is simply covered by the next one. Per-row errors are logged and do not abort the batch.
+**Delivery semantics:** best-effort per tick (`attempts: 1`). A failed tick is simply covered by the next one. Per-row errors are logged and do not abort the batch. Finished ticks keep bounded retention (`removeOnComplete: { count: 50 }`, `removeOnFail: { count: 100 }`), because Redis runs with `noeviction` and a tick every 15 min would otherwise leave ~96 job hashes a day behind.
 
 **What a tick does** (batches of at most 100 rows per category, oldest first):
 1. **Stale uploads.** Select `processing_status = 'uploading' AND updated_at < now() - VIDEO_UPLOAD_STALE_AFTER_MS` (default 86400000 = 24 h of no upload activity; `part-urls` bumps `updated_at`). For each row, claim it with a conditional update (`WHERE id = :id AND processing_status = 'uploading'`) to `failed`, `failure_reason = 'UPLOAD_ABANDONED'`, `upload_id = null`. Only when the claim affected 1 row, call `AbortMultipartUpload` with the previous `upload_id` (`NoSuchUpload` tolerated). A concurrent `complete` loses the race cleanly, because its own transition to `processing` is conditional on `uploading` and answers `INVALID_VIDEO_STATE`.

@@ -60,6 +60,12 @@ describe('VideoMaintenanceScheduler (integration, Redis)', () => {
       name: VIDEO_MAINTENANCE_SWEEP_JOB,
       every: sweepIntervalMs,
     });
+    const saved = await queue.getJobScheduler(VIDEO_MAINTENANCE_SCHEDULER_ID);
+    expect(saved?.template?.opts).toMatchObject({
+      attempts: 1,
+      removeOnComplete: { count: 50 },
+      removeOnFail: { count: 100 },
+    });
     const pending = await queue.getJobs(['waiting', 'delayed', 'prioritized']);
     expect(pending.map((job) => job.name)).toEqual([
       VIDEO_MAINTENANCE_SWEEP_JOB,
