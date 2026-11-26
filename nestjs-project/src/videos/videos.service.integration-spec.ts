@@ -21,6 +21,7 @@ import {
   createTestDataSource,
 } from '../test/create-test-data-source';
 import { obliterateTestQueues } from '../test/queues';
+import { resetVideoTestBuckets } from '../test/storage';
 import { User } from '../users/entities/user.entity';
 import type { InitiateUploadDto } from './dto/initiate-upload.dto';
 import {
@@ -109,6 +110,7 @@ describe('VideosService (integration, Postgres + MinIO + Redis)', () => {
   afterAll(async () => {
     await cleanAllTables(dataSource);
     await obliterateTestQueues(moduleRef);
+    await resetVideoTestBuckets(moduleRef);
     await moduleRef.close();
   });
 

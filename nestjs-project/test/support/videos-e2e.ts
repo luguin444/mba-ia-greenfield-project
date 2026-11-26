@@ -10,6 +10,7 @@ import { AuthService } from '../../src/auth/auth.service';
 import { DomainExceptionFilter } from '../../src/common/filters/domain-exception.filter';
 import { ValidationExceptionFilter } from '../../src/common/filters/validation-exception.filter';
 import { obliterateTestQueues } from '../../src/test/queues';
+import { resetVideoTestBuckets } from '../../src/test/storage';
 import type { InitiateUploadResponseDto } from '../../src/videos/dto/initiate-upload-response.dto';
 
 /** Shared setup of the video e2e suites (one app per suite, `main.ts` globals reproduced). */
@@ -58,6 +59,7 @@ export async function createVideosE2eApp(): Promise<VideosE2eContext> {
 
 export async function closeVideosE2eApp(ctx: VideosE2eContext): Promise<void> {
   await obliterateTestQueues(ctx.moduleFixture);
+  await resetVideoTestBuckets(ctx.moduleFixture);
   await ctx.app.close();
 }
 

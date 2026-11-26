@@ -123,7 +123,8 @@
 ### SI-03.13 — Guard de autenticação opcional (`@OptionalAuth`)
 - **Status:** pending
 - **Tests:** —
-- **Observations:** none
+- **Observations:**
+  - **Pre-SI hygiene (leader request, outside the SIs, commit `test(videos): clean test buckets after video suites`):** the video suites left `videos-test` dirty (180 open multipart uploads and 148 MiB in 22 objects before this block). New helper `resetVideoTestBuckets(moduleRef)` in `src/test/storage.ts` uses the module's real internal S3 client and config. It aborts every open multipart upload (`ListMultipartUploads` paged by `KeyMarker`/`UploadIdMarker`; the SDK has no paginator for it) and deletes every object (`paginateListObjectsV2` + one `DeleteObject` per key, because `DeleteObjects` sends the SDK's default CRC checksum, which S3-compatible stores do not all accept) in `videos-test` and `thumbnails-test`. It throws before any S3 call if either bucket name does not end in `-test` (unit test `src/test/storage.spec.ts`, 2 cases). It runs in the `afterAll` of `storage.service.integration-spec.ts`, `videos.service.integration-spec.ts` and every video e2e suite (through `closeVideosE2eApp`), before the module is closed. MinIO answers `ListMultipartUploads` with no prefix (all 180 listed), so no per-key listing was needed. After the storage + videos integration suites and the 5 video e2e suites: `mc ls --incomplete --recursive local/videos-test` → 0, `mc du` → 0 objects in both buckets.
 
 ### SI-03.14 — Endpoint GET /videos/:publicId/playback
 - **Status:** pending

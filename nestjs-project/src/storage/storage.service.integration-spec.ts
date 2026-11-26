@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { ConfigModule, type ConfigType } from '@nestjs/config';
 import { Test, type TestingModule } from '@nestjs/testing';
 import storageConfig from '../config/storage.config';
+import { resetVideoTestBuckets } from '../test/storage';
 import { MultipartUploadNotFoundError } from './storage.errors';
 import { StorageModule } from './storage.module';
 import { StorageService } from './storage.service';
@@ -65,6 +66,7 @@ describe('StorageService (integration, MinIO)', () => {
     for (const { bucket, key } of createdObjects) {
       await storage.deleteObject(bucket, key);
     }
+    await resetVideoTestBuckets(moduleRef);
     await moduleRef.close();
   });
 
