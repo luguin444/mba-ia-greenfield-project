@@ -5,7 +5,7 @@ libs:
     context7_id: "/taskforcesh/bullmq/v6.5.3"
     fetched_at: "2026-11-24T21:09:40-03:00"
   "ioredis":
-    version: "^6.1.0"
+    version: "^5.11.1"
     context7_id: "/redis/ioredis/v6.0.0"
     fetched_at: "2026-11-24T23:40:00-03:00"
   "@nestjs/bullmq":
@@ -41,7 +41,9 @@ Versions: `bullmq`, `@nestjs/bullmq`, `@aws-sdk/client-s3` and `@aws-sdk/s3-requ
 
 ## ioredis
 
-Used by: `phase-03-videos/TD-01` (Redis driver required by bullmq 6; Note on TD-01). Added at the pre-implementation review: `bullmq@6.7.10` declares `ioredis` as an **optional** peer (`peerDependenciesMeta.ioredis.optional: true`), so it must be installed explicitly. bullmq's own dev pin is `6.0.0`; npm `latest` is `6.1.0` (2026-11-24); context7 indexes v6.0.0 (same major).
+Used by: `phase-03-videos/TD-01` (Redis driver required by bullmq 6; Note on TD-01). Added at the pre-implementation review: `bullmq@6.7.10` declares `ioredis` as an **optional** peer (`peerDependenciesMeta.ioredis.optional: true`), so it must be installed explicitly. bullmq's own dev pin is `6.0.0`; npm `latest` is `6.1.0` (2026-11-24); context7 indexes v6.0.0.
+
+**Installed `^5.11.1`, not `^6.1.0` (SI-03.1, 2026-11-25):** `typeorm@0.3.28` (and typeorm `latest`, 1.1.3) declares `ioredis@^5.0.4` as an optional peer, so installing 6.x fails with `ERESOLVE`. bullmq 6 accepts `ioredis>=5.0.0`, so 5.11.1 satisfies both peers without `--legacy-peer-deps`. Phase 03 passes only plain `{ host, port }` options to BullMQ, which ioredis 5 and 6 both accept. The context7 docs (v6.0.0) are one major ahead, which does not matter for that usage.
 
 - Never instantiate `ioredis` directly in Phase 03: pass plain connection options (`{ host, port }`) to `BullModule.forRootAsync` and let BullMQ create the clients.
 - Workers: BullMQ forces `maxRetriesPerRequest: null` on worker connections. Do not override it (bullmq docs, "going-to-production").

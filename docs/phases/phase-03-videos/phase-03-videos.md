@@ -241,7 +241,7 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 
 1. Criar `src/videos/dto/initiate-upload.dto.ts` (`fileName` trim 1–255, `title` opcional trim 1–255, `sizeBytes` `@IsInt` `@Min(1)`, `mimeType` máx. 127 + `^video\/[\w.+-]+$`), `src/videos/dto/part-url.dto.ts` e `src/videos/dto/initiate-upload-response.dto.ts` (per `#### Validation Rules — video endpoints`; inherited `phase-02-auth/TD-06`).
 2. `VideosService.initiateUpload(userId, dto)`, passos 1–2: canal via `ChannelsService.findIdByUserId` (`null` → `ChannelNotFoundException`); `sizeBytes > VIDEO_MAX_UPLOAD_BYTES` → `VideoTooLargeException`; `partSize = max(VIDEO_UPLOAD_PART_SIZE_BYTES, ceil(sizeBytes / 10000))` e `partCount = ceil(sizeBytes / partSize)`; `title` = o informado ou, quando omitido, `fileName` sem a extensão (o `fileName` inteiro se ficar vazio) (per `phase-03-videos/TD-06`, `phase-03-videos/TD-05` Note).
-3. Passos 3–4 numa transação: `ChannelsService.lockIdByUserId(manager, userId)`; contagem de vídeos `uploading` do canal ≥ `VIDEO_MAX_ACTIVE_UPLOADS_PER_CHANNEL` → `ActiveUploadLimitReachedException`; `id = randomUUID()`, `createMultipartUpload('{id}/source')`, insert com `generatePublicId()` e retry em `23505` na coluna `public_id` (máx. 5, cada tentativa num SAVEPOINT conforme `.claude/rules/typeorm-queries.md`; não copiar o padrão do `ChannelsService`, que não usa SAVEPOINT); se o insert falhar, `abortMultipartUpload` best-effort e rethrow (per `phase-03-videos/TD-05`, `phase-03-videos/TD-09`, `phase-03-videos/TD-13`).
+3. Passos 3–4 numa transação: `ChannelsService.lockIdByUserId(manager, userId)`; contagem de vídeos `uploading` do canal ≥ `VIDEO_MAX_ACTIVE_UPLOADS_PER_CHANNEL` → `ActiveUploadLimitReachedException`; `id = randomUUID()`, `createMultipartUpload('{id}/source', dto.mimeType)` (estende a assinatura do `StorageService` do SI-03.5 para enviar `ContentType`: o S3 aplica o tipo ao objeto final, e o playback responde `video/*` em vez de `binary/octet-stream`, que navegadores estritos como o Safari recusam), insert com `generatePublicId()` e retry em `23505` na coluna `public_id` (máx. 5, cada tentativa num SAVEPOINT conforme `.claude/rules/typeorm-queries.md`; não copiar o padrão do `ChannelsService`, que não usa SAVEPOINT); se o insert falhar, `abortMultipartUpload` best-effort e rethrow (per `phase-03-videos/TD-05`, `phase-03-videos/TD-09`, `phase-03-videos/TD-13`).
 4. Passo 5: `presignUploadPart` para as partes `1..min(partCount, 100)` com TTL `VIDEO_UPLOAD_PART_URL_TTL_SECONDS` e resposta com `videoId`, `publicId`, `uploadId`, `partSize`, `partCount`, `parts`, `expiresAt`.
 5. Criar `src/videos/videos.controller.ts` (`@ApiTags('videos')`, `@SkipThrottle()`, `@Controller('videos')`) com `@Post('uploads')` `@HttpCode(201)`, `@ApiBearerAuth('access-token')`, `@ApiOperation` e um `@ApiResponse` por status (201 tipado; 400/401/404/409/413 via `getSchemaPath(ApiErrorEnvelope)`) (per `phase-03-videos/TD-13`; inherited `openapi-docs-nestjs/TD-01`).
 
@@ -326,7 +326,7 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 | Artifact | Layer | Test file |
 |----------|-------|-----------|
 | `VideosService.completeUpload` | Unit: enqueue que lança **ou que nunca resolve** (timeout, com fake timers) → retorna o vídeo `processing` e chama `logger.error` com `videoId`; `NoSuchUpload` → `INVALID_VIDEO_STATE`, com a linha já fora de `uploading` e também ainda `uploading`; update condicional com 0 linhas → `INVALID_VIDEO_STATE`; mensagem de `UPLOAD_INCOMPLETE` truncada em 20 | `src/videos/videos.service.spec.ts` |
-| `VideosService.completeUpload` | Integration (Postgres + MinIO + Redis): partes reais enviadas → objeto `{id}/source` completo, linha `processing` com `upload_id` nulo, job `process-video` com `jobId = videoId` na fila `test`; soma divergente → `UPLOAD_SIZE_MISMATCH` com a linha ainda `uploading`; partes de 4 MiB + 6 MiB num upload de 10 MiB (soma correta, parte 1 menor que `partSize`) → `UPLOAD_SIZE_MISMATCH`, nunca 500 | `src/videos/videos.service.integration-spec.ts` |
+| `VideosService.completeUpload` | Integration (Postgres + MinIO + Redis): partes reais enviadas → objeto `{id}/source` completo com `ContentType` = `mime_type` (`headObject` passa a devolver também `contentType`), linha `processing` com `upload_id` nulo, job `process-video` com `jobId = videoId` na fila `test`; soma divergente → `UPLOAD_SIZE_MISMATCH` com a linha ainda `uploading`; partes de 4 MiB + 6 MiB num upload de 10 MiB (soma correta, parte 1 menor que `partSize`) → `UPLOAD_SIZE_MISMATCH`, nunca 500 | `src/videos/videos.service.integration-spec.ts` |
 
 **Dependencies:** SI-03.9 — reusa `findOwnedOrFail`/`assertUploading`.
 
@@ -591,7 +591,7 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 1. Criar `src/videos/processing/video-maintenance.service.ts` com `sweepStaleUploads()`: até 100 linhas `uploading` com `updated_at < now() - VIDEO_UPLOAD_STALE_AFTER_MS`, mais antigas primeiro; claim condicional (`WHERE id = :id AND processing_status = 'uploading'`) para `failed`/`UPLOAD_ABANDONED`/`upload_id = null` e, só quando afetou 1 linha, `abortMultipartUpload` com o `upload_id` anterior (per `phase-03-videos/TD-12`).
 2. `sweepOrphanedProcessing()`: até 100 linhas `processing` com `updated_at < now() - VIDEO_SWEEP_INTERVAL_MS`; `getJob(videoId)` em `video-processing`: ausente → re-add com `processVideoJobOptions`; `failed` → update condicional para `failed`/`PROCESSING_ERROR`; waiting/active/delayed → nada. Erro numa linha é logado e não interrompe o lote (per `phase-03-videos/TD-01`).
 3. Criar `src/videos/processing/video-maintenance.consumer.ts`: `@Processor(VIDEO_MAINTENANCE_QUEUE, { concurrency: 1 })` estendendo `WorkerHost`, chamando as duas varreduras.
-4. Criar `src/videos/processing/video-maintenance.scheduler.ts`: no `onApplicationBootstrap`, `queue.upsertJobScheduler('video-maintenance-sweep', { every: VIDEO_SWEEP_INTERVAL_MS }, { name: 'sweep', data: {}, opts: { attempts: 1 } })` (bullmq v6, sem a API `repeat` legada; `library-refs.md` → bullmq).
+4. Criar `src/videos/processing/video-maintenance.scheduler.ts`: no `onApplicationBootstrap`, `queue.upsertJobScheduler('video-maintenance-sweep', { every: VIDEO_SWEEP_INTERVAL_MS }, { name: 'sweep', data: {}, opts: { attempts: 1, removeOnComplete: { count: 50 }, removeOnFail: { count: 100 } } })` (bullmq v6, sem a API `repeat` legada; `library-refs.md` → bullmq).
 5. Registrar `VideoMaintenanceService`, `VideoMaintenanceConsumer` e `VideoMaintenanceScheduler` no `WorkerModule` (a API nunca declara o scheduler).
 
 **Tests:**
@@ -600,7 +600,7 @@ Deliver video upload of up to 10GB straight to object storage (S3 multipart via 
 |----------|-------|-----------|
 | `VideoMaintenanceService` | Unit: decisão por estado do job (ausente → re-add; `failed` → `PROCESSING_ERROR`; waiting/active/delayed → nada); erro numa linha não interrompe as demais | `src/videos/processing/video-maintenance.service.spec.ts` |
 | `VideoMaintenanceService` | Integration (Postgres + MinIO + Redis): upload envelhecido → `failed`/`UPLOAD_ABANDONED` e multipart abortado; linha `processing` órfã (enqueue perdido no `complete`) → job `process-video` re-enfileirado com `jobId = videoId`; job `failed` → `PROCESSING_ERROR`; claim perdido para um `complete` concorrente não aborta o multipart | `src/videos/processing/video-maintenance.service.integration-spec.ts` |
-| `VideoMaintenanceScheduler` | Integration (Redis): dois bootstraps resultam em um único Job Scheduler `video-maintenance-sweep` | `src/videos/processing/video-maintenance.scheduler.integration-spec.ts` |
+| `VideoMaintenanceScheduler` | Integration (Redis): dois bootstraps resultam em um único Job Scheduler `video-maintenance-sweep`, com o template salvo trazendo `removeOnComplete: { count: 50 }` e `removeOnFail: { count: 100 }` | `src/videos/processing/video-maintenance.scheduler.integration-spec.ts` |
 
 **Dependencies:** SI-03.16 (`WorkerModule`)
 
@@ -775,7 +775,7 @@ Initiate upload: pre-registers the video as a draft and opens the multipart uplo
 **Behavior (order matters):**
 1. Resolve the caller's channel by `channels.user_id = sub`.
 2. Reject `sizeBytes > VIDEO_MAX_UPLOAD_BYTES`.
-3. In one transaction holding a `pessimistic_write` lock on the caller's `channels` row: count the channel's videos with `processing_status = 'uploading'`. Reject when the count is ≥ `VIDEO_MAX_ACTIVE_UPLOADS_PER_CHANNEL`. Otherwise generate `id`, call `CreateMultipartUpload` on `{id}/source`, then insert the `Video` (`uploading`, `draft`, `upload_id`, `upload_part_size_bytes`, `public_id` with retry).
+3. In one transaction holding a `pessimistic_write` lock on the caller's `channels` row: count the channel's videos with `processing_status = 'uploading'`. Reject when the count is ≥ `VIDEO_MAX_ACTIVE_UPLOADS_PER_CHANNEL`. Otherwise generate `id`, call `CreateMultipartUpload` on `{id}/source` with `ContentType = mimeType` (S3 applies it to the completed object, so playback serves `video/*`), then insert the `Video` (`uploading`, `draft`, `upload_id`, `upload_part_size_bytes`, `public_id` with retry).
 4. If the insert fails after `CreateMultipartUpload` succeeded, call `AbortMultipartUpload` best-effort and rethrow.
 5. Presign `UploadPart` URLs for parts `1..min(partCount, 100)` with TTL `VIDEO_UPLOAD_PART_URL_TTL_SECONDS`.
 
@@ -1077,7 +1077,7 @@ Unknown errors default to **transient**, which is bounded by `attempts` and ends
 
 #### video-maintenance sweep
 
-**Queue / scheduler:** `video-maintenance`. Job Scheduler id `video-maintenance-sweep`, repeat `{ every: VIDEO_SWEEP_INTERVAL_MS }`, job template `{ name: 'sweep', data: {}, opts: { attempts: 1 } }` (per `phase-03-videos/TD-12`). bullmq v6 has no legacy `repeat` API, so `upsertJobScheduler` is the only path (`library-refs.md` → bullmq).
+**Queue / scheduler:** `video-maintenance`. Job Scheduler id `video-maintenance-sweep`, repeat `{ every: VIDEO_SWEEP_INTERVAL_MS }`, job template `{ name: 'sweep', data: {}, opts: { attempts: 1, removeOnComplete: { count: 50 }, removeOnFail: { count: 100 } } }` (per `phase-03-videos/TD-12`). bullmq v6 has no legacy `repeat` API, so `upsertJobScheduler` is the only path (`library-refs.md` → bullmq).
 
 **Payload:**
 
@@ -1085,10 +1085,10 @@ Unknown errors default to **transient**, which is bounded by `attempts` and ends
 {}
 ```
 
-**Producer:** `WorkerModule` on bootstrap (`onApplicationBootstrap`) calls `queue.upsertJobScheduler('video-maintenance-sweep', { every: VIDEO_SWEEP_INTERVAL_MS }, { name: 'sweep', data: {}, opts: { attempts: 1 } })`. This is idempotent by scheduler id, so restarts and extra replicas do not stack schedulers. The API never declares it.
+**Producer:** `WorkerModule` on bootstrap (`onApplicationBootstrap`) calls `queue.upsertJobScheduler('video-maintenance-sweep', { every: VIDEO_SWEEP_INTERVAL_MS }, { name: 'sweep', data: {}, opts: { attempts: 1, removeOnComplete: { count: 50 }, removeOnFail: { count: 100 } } })`. This is idempotent by scheduler id, so restarts and extra replicas do not stack schedulers. The API never declares it.
 **Consumer:** `VideoMaintenanceConsumer` — `@Processor('video-maintenance', { concurrency: 1 })`, extends `WorkerHost`, in `WorkerModule`. Each tick is one job handled by one worker.
 **Trigger:** every `VIDEO_SWEEP_INTERVAL_MS` (default 900000 = 15 min).
-**Delivery semantics:** best-effort per tick (`attempts: 1`). A failed tick is simply covered by the next one. Per-row errors are logged and do not abort the batch.
+**Delivery semantics:** best-effort per tick (`attempts: 1`). A failed tick is simply covered by the next one. Per-row errors are logged and do not abort the batch. Finished ticks keep bounded retention (`removeOnComplete: { count: 50 }`, `removeOnFail: { count: 100 }`), because Redis runs with `noeviction` and a tick every 15 min would otherwise leave ~96 job hashes a day behind.
 
 **What a tick does** (batches of at most 100 rows per category, oldest first):
 1. **Stale uploads.** Select `processing_status = 'uploading' AND updated_at < now() - VIDEO_UPLOAD_STALE_AFTER_MS` (default 86400000 = 24 h of no upload activity; `part-urls` bumps `updated_at`). For each row, claim it with a conditional update (`WHERE id = :id AND processing_status = 'uploading'`) to `failed`, `failure_reason = 'UPLOAD_ABANDONED'`, `upload_id = null`. Only when the claim affected 1 row, call `AbortMultipartUpload` with the previous `upload_id` (`NoSuchUpload` tolerated). A concurrent `complete` loses the race cleanly, because its own transition to `processing` is conditional on `uploading` and answers `INVALID_VIDEO_STATE`.
@@ -1188,31 +1188,31 @@ SI-03.20 — depends on SI-03.10 + SI-03.12 + SI-03.15 + SI-03.18 (full pipeline
 
 ## Deliverables
 
-- [ ] SI-03.1 — Infra: dependências, namespaces de configuração e variáveis de ambiente
-- [ ] SI-03.2 — Infra: FFmpeg na imagem dev e serviços redis, minio e minio-init no Compose
-- [ ] SI-03.3 — Infra: isolamento do ambiente de teste e `--runInBand` no `test:e2e`
-- [ ] SI-03.4 — Entidade `Video`, migration `CreateVideos` e ajustes nos testes existentes
-- [ ] SI-03.5 — Módulo de storage (adapter S3 com client interno e público)
-- [ ] SI-03.6 — Módulo de fila (BullMQ) compartilhado entre API e worker
-- [ ] SI-03.7 — Fundações do domínio de vídeos (exceções, `publicId`, resposta e lookup de canal)
-- [ ] SI-03.8 — Endpoint POST /videos/uploads
-- [ ] SI-03.9 — Endpoint POST /videos/:id/upload/part-urls
-- [ ] SI-03.10 — Endpoint POST /videos/:id/upload/complete
-- [ ] SI-03.11 — Endpoint DELETE /videos/:id/upload
-- [ ] SI-03.12 — Endpoint GET /videos/:id
-- [ ] SI-03.13 — Guard de autenticação opcional (`@OptionalAuth`)
-- [ ] SI-03.14 — Endpoint GET /videos/:publicId/playback
-- [ ] SI-03.15 — Endpoint GET /videos/:publicId/download
-- [ ] SI-03.16 — Infra: `WorkerModule`, entrypoint `src/worker.ts` e serviço `video-worker`
-- [ ] SI-03.17 — Ferramentas de mídia: wrapper `ffprobe`/`ffmpeg` e fixtures
-- [ ] SI-03.18 — Consumer `process-video` (metadados e thumbnail)
-- [ ] SI-03.19 — Varredura de manutenção (`video-maintenance`)
-- [ ] SI-03.20 — E2E do pipeline completo (upload → processamento → streaming/download)
-- [ ] SI-03.21 — Documentação: `CLAUDE.md` (raiz e `nestjs-project`) e `openapi.json`
+- [x] SI-03.1 — Infra: dependências, namespaces de configuração e variáveis de ambiente
+- [x] SI-03.2 — Infra: FFmpeg na imagem dev e serviços redis, minio e minio-init no Compose
+- [x] SI-03.3 — Infra: isolamento do ambiente de teste e `--runInBand` no `test:e2e`
+- [x] SI-03.4 — Entidade `Video`, migration `CreateVideos` e ajustes nos testes existentes
+- [x] SI-03.5 — Módulo de storage (adapter S3 com client interno e público)
+- [x] SI-03.6 — Módulo de fila (BullMQ) compartilhado entre API e worker
+- [x] SI-03.7 — Fundações do domínio de vídeos (exceções, `publicId`, resposta e lookup de canal)
+- [x] SI-03.8 — Endpoint POST /videos/uploads
+- [x] SI-03.9 — Endpoint POST /videos/:id/upload/part-urls
+- [x] SI-03.10 — Endpoint POST /videos/:id/upload/complete
+- [x] SI-03.11 — Endpoint DELETE /videos/:id/upload
+- [x] SI-03.12 — Endpoint GET /videos/:id
+- [x] SI-03.13 — Guard de autenticação opcional (`@OptionalAuth`)
+- [x] SI-03.14 — Endpoint GET /videos/:publicId/playback
+- [x] SI-03.15 — Endpoint GET /videos/:publicId/download
+- [x] SI-03.16 — Infra: `WorkerModule`, entrypoint `src/worker.ts` e serviço `video-worker`
+- [x] SI-03.17 — Ferramentas de mídia: wrapper `ffprobe`/`ffmpeg` e fixtures
+- [x] SI-03.18 — Consumer `process-video` (metadados e thumbnail)
+- [x] SI-03.19 — Varredura de manutenção (`video-maintenance`)
+- [x] SI-03.20 — E2E do pipeline completo (upload → processamento → streaming/download)
+- [x] SI-03.21 — Documentação: `CLAUDE.md` (raiz e `nestjs-project`) e `openapi.json`
 
 **Full test suites:**
 
-- [ ] Backend tests pass (`cd nestjs-project && docker compose exec nestjs-api npm test -- --runInBand`)
-- [ ] E2E tests pass (`cd nestjs-project && docker compose exec nestjs-api npm run test:e2e`)
-- [ ] Type/compilation checks pass (`cd nestjs-project && docker compose exec nestjs-api npx tsc --noEmit`)
-- [ ] Lint passes (`cd nestjs-project && docker compose exec nestjs-api npm run lint`)
+- [x] Backend tests pass (`cd nestjs-project && docker compose exec nestjs-api npm test -- --runInBand`)
+- [x] E2E tests pass (`cd nestjs-project && docker compose exec nestjs-api npm run test:e2e`)
+- [x] Type/compilation checks pass (`cd nestjs-project && docker compose exec nestjs-api npx tsc --noEmit`)
+- [x] Lint passes (`cd nestjs-project && docker compose exec nestjs-api npm run lint`)

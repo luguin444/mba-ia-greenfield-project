@@ -21,4 +21,42 @@ export const envValidationSchema = Joi.object({
   MAIL_PORT: Joi.number().default(1025),
   MAIL_FROM: Joi.string().default('"StreamTube" <noreply@streamtube.com>'),
   SWAGGER_ENABLED: Joi.string().valid('true', 'false').default('false'),
+
+  REDIS_HOST: Joi.string().default('redis'),
+  REDIS_PORT: Joi.number().port().default(6379),
+  QUEUE_PREFIX: Joi.string().default('bull'),
+
+  S3_ENDPOINT: Joi.string().uri().required(),
+  S3_PUBLIC_ENDPOINT: Joi.string().uri().required(),
+  S3_REGION: Joi.string().default('us-east-1'),
+  S3_ACCESS_KEY: Joi.string().required(),
+  S3_SECRET_KEY: Joi.string().min(8).required(),
+  S3_VIDEOS_BUCKET: Joi.string().default('videos'),
+  S3_THUMBNAILS_BUCKET: Joi.string().default('thumbnails'),
+
+  VIDEO_MAX_UPLOAD_BYTES: Joi.number().integer().min(1).default(10737418240),
+  VIDEO_UPLOAD_PART_SIZE_BYTES: Joi.number()
+    .integer()
+    .min(5242880)
+    .max(5368709120)
+    .default(67108864),
+  VIDEO_UPLOAD_PART_URL_TTL_SECONDS: Joi.number()
+    .integer()
+    .min(60)
+    .max(604800)
+    .default(3600),
+  VIDEO_PLAYBACK_URL_TTL_SECONDS: Joi.number()
+    .integer()
+    .min(60)
+    .max(604800)
+    .default(14400),
+  VIDEO_MAX_ACTIVE_UPLOADS_PER_CHANNEL: Joi.number()
+    .integer()
+    .min(1)
+    .default(5),
+  VIDEO_SWEEP_INTERVAL_MS: Joi.number().integer().min(1000).default(900000),
+  VIDEO_UPLOAD_STALE_AFTER_MS: Joi.number()
+    .integer()
+    .min(60000)
+    .default(86400000),
 });

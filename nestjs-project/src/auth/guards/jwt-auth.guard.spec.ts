@@ -2,6 +2,8 @@ import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
+import { IS_OPTIONAL_AUTH_KEY } from '../decorators/optional-auth.decorator';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
 const TEST_SECRET = 'test-secret';
@@ -21,6 +23,7 @@ describe('JwtAuthGuard', () => {
   let guard: JwtAuthGuard;
   let jwtService: JwtService;
   let mockReflector: { getAllAndOverride: jest.Mock };
+  let metadata: Record<string, boolean | undefined>;
 
   beforeAll(async () => {
     mockReflector = { getAllAndOverride: jest.fn() };
@@ -43,13 +46,20 @@ describe('JwtAuthGuard', () => {
   });
 
   beforeEach(() => {
-    mockReflector.getAllAndOverride.mockReturnValue(false);
+    metadata = {};
+    mockReflector.getAllAndOverride.mockImplementation(
+      (key: string) => metadata[key],
+    );
   });
 
-  it('bypasses guard on @Public() routes', async () => {
-    mockReflector.getAllAndOverride.mockReturnValue(true);
-    const ctx = makeContext({ headers: {} });
-    await expect(guard.canActivate(ctx)).resolves.toBe(true);
+  it('bypasses guard on @Public() routes without reading the Authorization header', async () => {
+    metadata = { [IS_PUBLIC_KEY]: true };
+    const readHeaders = jest.fn(() => ({ authorization: 'Bearer anything' }));
+    const request = {};
+    Object.defineProperty(request, 'headers', { get: readHeaders });
+
+    await expect(guard.canActivate(makeContext(request))).resolves.toBe(true);
+    expect(readHeaders).not.toHaveBeenCalled();
   });
 
   it('passes with a valid JWT and attaches payload to request.user', async () => {
@@ -87,5 +97,65 @@ describe('JwtAuthGuard', () => {
       headers: { authorization: `Bearer ${expiredToken}` },
     });
     await expect(guard.canActivate(ctx)).rejects.toThrow(UnauthorizedException);
+  });
+
+  describe('@OptionalAuth() routes', () => {
+    beforeEach(() => {
+      metadata = { [IS_PUBLIC_KEY]: true, [IS_OPTIONAL_AUTH_KEY]: true };
+    });
+
+    it('lets an anonymous request through with no user when Authorization is missing', async () => {
+      const request: Record<string, unknown> = { headers: {} };
+
+      await expect(guard.canActivate(makeContext(request))).resolves.toBe(true);
+      expect(request.user).toBeUndefined();
+    });
+
+    it('treats a non-Bearer Authorization header as anonymous', async () => {
+      const request: Record<string, unknown> = {
+        headers: { authorization: 'Basic dXNlcjpwYXNz' },
+      };
+
+      await expect(guard.canActivate(makeContext(request))).resolves.toBe(true);
+      expect(request.user).toBeUndefined();
+    });
+
+    it('attaches the payload to request.user when the token verifies', async () => {
+      const token = jwtService.sign({ sub: 'user-1', email: 'a@example.com' });
+      const request: Record<string, unknown> = {
+        headers: { authorization: `Bearer ${token}` },
+      };
+
+      await expect(guard.canActivate(makeContext(request))).resolves.toBe(true);
+      expect(request.user).toMatchObject({
+        sub: 'user-1',
+        email: 'a@example.com',
+      });
+    });
+
+    it('throws UnauthorizedException on an expired token instead of degrading to anonymous', async () => {
+      const expiredToken = jwtService.sign(
+        { sub: 'user-1', email: 'a@example.com' },
+        { expiresIn: -60 },
+      );
+      const request: Record<string, unknown> = {
+        headers: { authorization: `Bearer ${expiredToken}` },
+      };
+
+      await expect(guard.canActivate(makeContext(request))).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(request.user).toBeUndefined();
+    });
+
+    it('throws UnauthorizedException on an invalid token', async () => {
+      const request: Record<string, unknown> = {
+        headers: { authorization: 'Bearer not-a-valid-jwt' },
+      };
+
+      await expect(guard.canActivate(makeContext(request))).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
   });
 });

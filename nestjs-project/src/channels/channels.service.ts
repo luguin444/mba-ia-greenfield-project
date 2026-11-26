@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { DataSource, QueryFailedError } from 'typeorm';
+import { DataSource, EntityManager, QueryFailedError } from 'typeorm';
 import { appendRandomSuffix, sanitizeNickname } from './nickname.util';
 import { Channel } from './entities/channel.entity';
 
@@ -26,6 +26,31 @@ function isPgUniqueViolationOnColumn(err: unknown, column: string): boolean {
 @Injectable()
 export class ChannelsService {
   constructor(private readonly dataSource: DataSource) {}
+
+  /** Id of the user's channel, or `null` when the user has none. */
+  async findIdByUserId(userId: string): Promise<string | null> {
+    const channel = await this.dataSource.manager.findOne(Channel, {
+      select: { id: true },
+      where: { user_id: userId },
+    });
+    return channel?.id ?? null;
+  }
+
+  /**
+   * Same lookup, locking the channel row (`FOR UPDATE`) until the caller's
+   * transaction ends. `manager` must belong to an open transaction.
+   */
+  async lockIdByUserId(
+    manager: EntityManager,
+    userId: string,
+  ): Promise<string | null> {
+    const channel = await manager.findOne(Channel, {
+      select: { id: true },
+      where: { user_id: userId },
+      lock: { mode: 'pessimistic_write' },
+    });
+    return channel?.id ?? null;
+  }
 
   async createChannel(userId: string, email: string): Promise<Channel> {
     const baseNickname = sanitizeNickname(email.split('@')[0]);
