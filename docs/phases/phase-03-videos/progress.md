@@ -150,6 +150,7 @@
   - `getDownloadUrl` and `getPlaybackUrl` share `resolveViewable` and a private `signSourceGet(video, disposition?)`. The only difference is the disposition.
   - `VIDEO_NOT_READY` keeps the catalog message "Video is not ready for playback" on the download route too, as the download spec expects. The Error Catalog has a single message for both routes.
   - `@ApiBearerAuth` on this optional-auth route: same note as SI-03.14 (the plan overrides the general `@Public()` rule in `nestjs-controllers.md`).
+  - **Leader follow-up (W4.4 gate, committed at the start of W4.5 as `test(videos): tighten playback/download assertions and e2e teardown`):** the download e2e happy path now compares `Content-Disposition` by full equality (as `videos.service.integration-spec.ts` already did); the playback e2e 409 for an `uploading` video uses `toEqual` on the whole body (same as the `processing` case); `closeVideosE2eApp` wraps the queue/bucket cleanup in `try/finally` so `app.close()` runs even if the cleanup throws. `videos-download` + `videos-playback` e2e: 11/11.
 
 ### SI-03.16 — Infra: `WorkerModule`, entrypoint `src/worker.ts` e serviço `video-worker`
 - **Status:** pending

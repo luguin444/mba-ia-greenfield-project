@@ -88,9 +88,9 @@ describe('videos-download', () => {
     const file = await fetch(body.url);
     expect(file.status).toBe(200);
     const disposition = file.headers.get('content-disposition') ?? '';
-    expect(disposition.startsWith('attachment;')).toBe(true);
-    expect(disposition).toContain('filename="meu-video.mp4"');
-    expect(disposition).toContain("filename*=UTF-8''meu-video.mp4");
+    expect(disposition).toBe(
+      `attachment; filename="meu-video.mp4"; filename*=UTF-8''meu-video.mp4`,
+    );
     expect((await file.arrayBuffer()).byteLength).toBe(SIZE_BYTES);
   });
 

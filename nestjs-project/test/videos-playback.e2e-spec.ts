@@ -155,9 +155,11 @@ describe('videos-playback', () => {
       uploading.publicId,
       owner.accessToken,
     ).expect(409);
-    expect((uploadingRes.body as ApiErrorEnvelope).error).toBe(
-      'VIDEO_NOT_READY',
-    );
+    expect(uploadingRes.body).toEqual({
+      statusCode: 409,
+      error: 'VIDEO_NOT_READY',
+      message: 'Video is not ready for playback',
+    });
     const otherRes = await getPlayback(
       processing.publicId,
       other.accessToken,

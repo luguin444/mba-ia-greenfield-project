@@ -62,9 +62,12 @@ export async function createVideosE2eApp(): Promise<VideosE2eContext> {
 }
 
 export async function closeVideosE2eApp(ctx: VideosE2eContext): Promise<void> {
-  await obliterateTestQueues(ctx.moduleFixture);
-  await resetVideoTestBuckets(ctx.moduleFixture);
-  await ctx.app.close();
+  try {
+    await obliterateTestQueues(ctx.moduleFixture);
+    await resetVideoTestBuckets(ctx.moduleFixture);
+  } finally {
+    await ctx.app.close();
+  }
 }
 
 /** Registers (capturing the confirmation token instead of emailing it), confirms and logs in. */
