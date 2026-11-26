@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 16/21 completed
+**SIs:** 17/21 completed
 
 ### SI-03.1 — Infra: dependências, namespaces de configuração e variáveis de ambiente
 - **Status:** completed
@@ -164,9 +164,15 @@
   - AC "fresh environment (`down -v && up -d`)" was not run here: it wipes the shared dev Postgres/MinIO volumes. It belongs to the leader gate / E5 DoD from scratch. Restart-policy recovery is covered by the kill test above.
 
 ### SI-03.17 — Ferramentas de mídia: wrapper `ffprobe`/`ffmpeg` e fixtures
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 17 passing (`media-metadata.util.spec.ts` 7, `media-tools.service.spec.ts` 7 with `execFile` mocked, `media-tools.service.integration-spec.ts` 3 with real ffprobe/ffmpeg + MinIO); `tsc --noEmit` 0, eslint 0
+- **Observations:**
+  - Fixtures generated once inside the container (Debian ffmpeg 5.1) and versioned: `test/fixtures/sample-2s.mp4` (17 KB; `testsrc` 160×120 @10 fps h264 + 440 Hz `sine` aac 32k, 2.000 s, `+faststart`, `+bitexact`) and `test/fixtures/not-a-video.mp4` (4 KiB from `/dev/urandom`; ffprobe answers `moov atom not found` + `Invalid data found when processing input`).
+  - `extractFrame` adds `-v error -nostdin -y` to the plan's `-ss t -i input -frames:v 1 out` arguments. `-nostdin` stops ffmpeg from reading the worker's stdin, and `-y` keeps it from blocking on an overwrite prompt. Both runs use `execFile` with `{ timeout: 120000 }` (`MEDIA_TOOL_TIMEOUT_MS`).
+  - Classification order in the wrapper: `error.killed` (timeout → SIGTERM) → `MediaToolTransientError`, checked first. Then a non-zero exit whose stderr has an `INVALID_MEDIA_STDERR_MARKERS` entry → `InvalidMediaError`. Anything else (5XX from storage, `ENOENT` for a missing binary, other exits) → `MediaToolTransientError`. A missing video stream is `InvalidMediaError` from `mapProbeOutput`.
+  - `durationSeconds` is `null` when ffprobe reports no duration or `N/A` (all metadata columns are nullable). `thumbnailTimestamp(null)` → 0.
+  - The integration test uploads each fixture to `videos-test` and probes it through an **internal** presigned URL (`minio:9000`), so ffprobe reads it over HTTP the same way the worker will. Buckets are emptied in `afterAll`.
+  - New files live in `src/videos/processing/`; the constants (`MEDIA_TOOL_TIMEOUT_MS`, stderr markers, thumbnail offsets) are in `processing.constants.ts` and the error classes in `media-tools.errors.ts` (the plan did not name these files).
 
 ### SI-03.18 — Consumer `process-video` (metadados e thumbnail)
 - **Status:** pending
