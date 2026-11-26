@@ -12,6 +12,10 @@ import { ValidationExceptionFilter } from '../../src/common/filters/validation-e
 import { obliterateTestQueues } from '../../src/test/queues';
 import { resetVideoTestBuckets } from '../../src/test/storage';
 import type { InitiateUploadResponseDto } from '../../src/videos/dto/initiate-upload-response.dto';
+import {
+  Video,
+  VideoProcessingStatus,
+} from '../../src/videos/entities/video.entity';
 
 /** Shared setup of the video e2e suites (one app per suite, `main.ts` globals reproduced). */
 export interface VideosE2eContext {
@@ -127,4 +131,39 @@ export async function putPart(url: string, size: number): Promise<Response> {
     method: 'PUT',
     body: new Uint8Array(Buffer.alloc(size, 7)),
   });
+}
+
+/** Initiates a single-part upload of `sizeBytes`, PUTs it and completes it (video → `processing`). */
+export async function uploadAndComplete(
+  app: INestApplication<App>,
+  accessToken: string,
+  fileName: string,
+  sizeBytes = 1048576,
+): Promise<InitiateUploadResponseDto> {
+  const initiated = await initiateUpload(app, accessToken, {
+    fileName,
+    sizeBytes,
+    mimeType: 'video/mp4',
+  });
+  const put = await putPart(initiated.parts[0].url, sizeBytes);
+  expect(put.status).toBe(200);
+  await request(app.getHttpServer())
+    .post(`/videos/${initiated.videoId}/upload/complete`)
+    .set('Authorization', `Bearer ${accessToken}`)
+    .expect(202);
+  return initiated;
+}
+
+/** Does what the worker does at the end of processing (it does not run in these suites). */
+export async function markVideoReady(
+  dataSource: DataSource,
+  videoId: string,
+): Promise<void> {
+  await dataSource.getRepository(Video).update(
+    { id: videoId },
+    {
+      processing_status: VideoProcessingStatus.READY,
+      processed_at: () => 'CURRENT_TIMESTAMP',
+    },
+  );
 }

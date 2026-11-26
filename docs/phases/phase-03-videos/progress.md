@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 13/21 completed
+**SIs:** 14/21 completed
 
 ### SI-03.1 — Infra: dependências, namespaces de configuração e variáveis de ambiente
 - **Status:** completed
@@ -131,9 +131,15 @@
   - **Pre-SI hygiene (leader request, outside the SIs, commit `test(videos): clean test buckets after video suites`):** the video suites left `videos-test` dirty (180 open multipart uploads and 148 MiB in 22 objects before this block). New helper `resetVideoTestBuckets(moduleRef)` in `src/test/storage.ts` uses the module's real internal S3 client and config. It aborts every open multipart upload (`ListMultipartUploads` paged by `KeyMarker`/`UploadIdMarker`; the SDK has no paginator for it) and deletes every object (`paginateListObjectsV2` + one `DeleteObject` per key, because `DeleteObjects` sends the SDK's default CRC checksum, which S3-compatible stores do not all accept) in `videos-test` and `thumbnails-test`. It throws before any S3 call if either bucket name does not end in `-test` (unit test `src/test/storage.spec.ts`, 2 cases). It runs in the `afterAll` of `storage.service.integration-spec.ts`, `videos.service.integration-spec.ts` and every video e2e suite (through `closeVideosE2eApp`), before the module is closed. MinIO answers `ListMultipartUploads` with no prefix (all 180 listed), so no per-key listing was needed. After the storage + videos integration suites and the 5 video e2e suites: `mc ls --incomplete --recursive local/videos-test` → 0, `mc du` → 0 objects in both buckets.
 
 ### SI-03.14 — Endpoint GET /videos/:publicId/playback
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 17 new, passing for the SI: `src/videos/videos.service.spec.ts` +10 (51 total), `src/videos/videos.service.integration-spec.ts` +1 (13 total), `test/videos-playback.e2e-spec.ts` 6 (the 6 spec scenarios). Re-run: full `npm run test:e2e` 90/90 (9 suites, includes `auth.e2e-spec.ts` and the other video suites after the shared helper change)
+- **Observations:**
+  - `resolveViewable` is `private`. Its unit tests (the plan's 5 cases plus a missing `publicId`, non-owner on a non-ready draft, and a ready non-draft for an anonymous caller) go through `getPlaybackUrl`, which calls it first. SI-03.15 reuses it from `getDownloadUrl` in the same service.
+  - The channel lookup runs only for a draft with a caller. An anonymous caller and a non-draft video never query `channels`. The "non-draft is visible to anyone" branch has a unit test with a forged `'published'` value, because Phase 03's enum only has `draft`. It keeps the Phase 04 gate covered.
+  - Shared e2e helpers `uploadAndComplete(app, token, fileName, sizeBytes)` (initiate a single-part upload → PUT → `complete` → `202`) and `markVideoReady(dataSource, videoId)` (simulates the worker: `ready` + `processed_at`) added to `test/support/videos-e2e.ts`. The playback and download specs both describe this setup ("helper do arquivo"), so it lives in the shared support file instead of being copied into both suites.
+  - The integration test builds the ready video through the real `initiateUpload` → PUT → `completeUpload` path and then sets `ready` on the row. It checks host `minio.localhost:9000`, path `/videos-test/{id}/source`, `206`, `Content-Range: bytes 0-1023/1048576` and a 1024-byte body.
+  - `@ApiBearerAuth('access-token')` on this `@OptionalAuth()` route follows the plan's Authorization Matrix ("optional-auth operations declare `@ApiBearerAuth`"). It overrides the general rule in `.claude/rules/nestjs-controllers.md` that `@Public()` methods must not carry it; that rule predates optional auth. Follow-up for SI-03.21 or the rule's owner: add the optional-auth exception to the rule.
+  - `publicId` has no validation pipe on purpose. A malformed value must answer `404 VIDEO_NOT_FOUND` like a missing one (never `400`), so the pattern check is in the service and skips the DB.
 
 ### SI-03.15 — Endpoint GET /videos/:publicId/download
 - **Status:** pending

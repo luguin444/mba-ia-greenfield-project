@@ -30,6 +30,7 @@ import type { InitiateUploadDto } from './dto/initiate-upload.dto';
 import type { PartUrlDto } from './dto/part-url.dto';
 import type { PartUrlsResponseDto } from './dto/part-urls-response.dto';
 import type { PartUrlsDto } from './dto/part-urls.dto';
+import type { SignedUrlResponseDto } from './dto/signed-url-response.dto';
 import type { VideoResponseDto } from './dto/video-response.dto';
 import {
   Video,
@@ -37,7 +38,7 @@ import {
   VideoProcessingStatus,
   VideoPublicationStatus,
 } from './entities/video.entity';
-import { generatePublicId } from './public-id.util';
+import { generatePublicId, PUBLIC_ID_PATTERN } from './public-id.util';
 import { toVideoResponse } from './video-response.mapper';
 import {
   ENQUEUE_TIMEOUT_MS,
@@ -53,6 +54,7 @@ import {
   UploadIncompleteException,
   UploadSizeMismatchException,
   VideoNotFoundException,
+  VideoNotReadyException,
   VideoTooLargeException,
 } from './videos.exceptions';
 
@@ -281,6 +283,18 @@ export class VideosService {
   }
 
   /**
+   * Short-lived presigned GET of the original file for the `<video>` element,
+   * signed for the browser-facing host. `callerId` is absent for anonymous calls.
+   */
+  async getPlaybackUrl(
+    publicId: string,
+    callerId?: string,
+  ): Promise<SignedUrlResponseDto> {
+    const video = await this.resolveViewable(publicId, callerId);
+    return this.signSourceGet(video);
+  }
+
+  /**
    * Owner abort: frees the storage space of the parts and the channel's
    * active-upload slot. An upload already gone from storage is not an error.
    */
@@ -418,6 +432,46 @@ export class VideosService {
       throw new VideoNotFoundException();
     }
     return video;
+  }
+
+  /**
+   * Viewer routes: visible = the caller owns the video, or it is not a draft.
+   * Visibility is decided before the state, so a hidden video never reveals
+   * that it exists by answering `VIDEO_NOT_READY`.
+   */
+  private async resolveViewable(
+    publicId: string,
+    callerId?: string,
+  ): Promise<Video> {
+    if (!PUBLIC_ID_PATTERN.test(publicId)) throw new VideoNotFoundException();
+    const video = await this.videoRepository.findOne({
+      where: { public_id: publicId },
+    });
+    if (!video || !(await this.isVisibleTo(video, callerId))) {
+      throw new VideoNotFoundException();
+    }
+    if (video.processing_status !== VideoProcessingStatus.READY) {
+      throw new VideoNotReadyException();
+    }
+    return video;
+  }
+
+  private async isVisibleTo(video: Video, callerId?: string): Promise<boolean> {
+    if (video.publication_status !== VideoPublicationStatus.DRAFT) return true;
+    if (!callerId) return false;
+    const channelId = await this.channelsService.findIdByUserId(callerId);
+    return channelId === video.channel_id;
+  }
+
+  private async signSourceGet(video: Video): Promise<SignedUrlResponseDto> {
+    const ttlSeconds = this.config.playbackUrlTtlSeconds;
+    const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
+    const url = await this.storageService.presignGetObject(
+      video.source_key,
+      ttlSeconds,
+      { client: 'public' },
+    );
+    return { url, expiresAt };
   }
 
   private assertUploading(video: Video): asserts video is UploadingVideo {

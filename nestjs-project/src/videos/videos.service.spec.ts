@@ -27,6 +27,7 @@ import {
   UploadIncompleteException,
   UploadSizeMismatchException,
   VideoNotFoundException,
+  VideoNotReadyException,
   VideoTooLargeException,
 } from './videos.exceptions';
 import { VideosService } from './videos.service';
@@ -128,6 +129,7 @@ describe('VideosService', () => {
     headObject: jest.Mock;
     deleteObject: jest.Mock;
     publicObjectUrl: jest.Mock;
+    presignGetObject: jest.Mock;
   };
   let processingQueue: { add: jest.Mock };
   let videoRepository: { findOne: jest.Mock; update: jest.Mock };
@@ -182,6 +184,9 @@ describe('VideosService', () => {
       publicObjectUrl: jest.fn(
         (bucket: string, key: string) =>
           `${STORAGE_CONFIG.publicEndpoint}/${bucket}/${key}`,
+      ),
+      presignGetObject: jest.fn((key: string) =>
+        Promise.resolve(`${STORAGE_CONFIG.publicEndpoint}/videos-test/${key}`),
       ),
     };
     processingQueue = { add: jest.fn().mockResolvedValue({ id: VIDEO_ID }) };
@@ -728,6 +733,136 @@ describe('VideosService', () => {
 
       await expect(service.getOwned(VIDEO_ID, USER_ID)).rejects.toBeInstanceOf(
         VideoNotFoundException,
+      );
+    });
+  });
+
+  describe('resolveViewable (through getPlaybackUrl)', () => {
+    const PUBLIC_ID = 'abcdefghijk';
+    const OTHER_USER_ID = 'user-2';
+
+    beforeEach(() => {
+      videoRepository.findOne.mockResolvedValue(
+        videoFixture({
+          processing_status: VideoProcessingStatus.READY,
+          upload_id: null,
+        }),
+      );
+    });
+
+    it('should reject a malformed publicId as VIDEO_NOT_FOUND without querying the repository', async () => {
+      await expect(
+        service.getPlaybackUrl('abc12', USER_ID),
+      ).rejects.toBeInstanceOf(VideoNotFoundException);
+      expect(videoRepository.findOne).not.toHaveBeenCalled();
+    });
+
+    it('should reject VIDEO_NOT_FOUND when no video has the publicId', async () => {
+      videoRepository.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.getPlaybackUrl(PUBLIC_ID, USER_ID),
+      ).rejects.toBeInstanceOf(VideoNotFoundException);
+      expect(videoRepository.findOne).toHaveBeenCalledWith({
+        where: { public_id: PUBLIC_ID },
+      });
+    });
+
+    it('should reject VIDEO_NOT_FOUND for an anonymous caller on a draft', async () => {
+      await expect(service.getPlaybackUrl(PUBLIC_ID)).rejects.toBeInstanceOf(
+        VideoNotFoundException,
+      );
+      expect(channelsService.findIdByUserId).not.toHaveBeenCalled();
+    });
+
+    it('should reject VIDEO_NOT_FOUND for a non-owner on a draft', async () => {
+      channelsService.findIdByUserId.mockResolvedValue('other-channel');
+
+      await expect(
+        service.getPlaybackUrl(PUBLIC_ID, OTHER_USER_ID),
+      ).rejects.toBeInstanceOf(VideoNotFoundException);
+      expect(channelsService.findIdByUserId).toHaveBeenCalledWith(
+        OTHER_USER_ID,
+      );
+    });
+
+    it('should reject VIDEO_NOT_FOUND for a non-owner on a draft that is not ready (visibility before state)', async () => {
+      channelsService.findIdByUserId.mockResolvedValue('other-channel');
+      videoRepository.findOne.mockResolvedValue(
+        videoFixture({ processing_status: VideoProcessingStatus.PROCESSING }),
+      );
+
+      await expect(
+        service.getPlaybackUrl(PUBLIC_ID, OTHER_USER_ID),
+      ).rejects.toBeInstanceOf(VideoNotFoundException);
+    });
+
+    it.each([
+      VideoProcessingStatus.UPLOADING,
+      VideoProcessingStatus.PROCESSING,
+    ])(
+      'should reject VIDEO_NOT_READY for the owner while the video is %s',
+      async (processingStatus) => {
+        videoRepository.findOne.mockResolvedValue(
+          videoFixture({ processing_status: processingStatus }),
+        );
+
+        await expect(
+          service.getPlaybackUrl(PUBLIC_ID, USER_ID),
+        ).rejects.toBeInstanceOf(VideoNotReadyException);
+        expect(storageService.presignGetObject).not.toHaveBeenCalled();
+      },
+    );
+
+    it('should let the owner see a ready draft', async () => {
+      await expect(
+        service.getPlaybackUrl(PUBLIC_ID, USER_ID),
+      ).resolves.toHaveProperty('url');
+    });
+
+    it('should let an anonymous caller see a ready video that is not a draft', async () => {
+      // Phase 03 only has `draft`; Phase 04 adds the published values.
+      videoRepository.findOne.mockResolvedValue(
+        videoFixture({
+          processing_status: VideoProcessingStatus.READY,
+          publication_status: 'published' as VideoPublicationStatus,
+          upload_id: null,
+        }),
+      );
+
+      await expect(service.getPlaybackUrl(PUBLIC_ID)).resolves.toHaveProperty(
+        'url',
+      );
+      expect(channelsService.findIdByUserId).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getPlaybackUrl', () => {
+    beforeEach(() => {
+      videoRepository.findOne.mockResolvedValue(
+        videoFixture({
+          processing_status: VideoProcessingStatus.READY,
+          upload_id: null,
+        }),
+      );
+    });
+
+    it('should sign the source with the public client and the playback TTL, with no disposition', async () => {
+      const before = Date.now();
+
+      const result = await service.getPlaybackUrl('abcdefghijk', USER_ID);
+
+      expect(storageService.presignGetObject).toHaveBeenCalledWith(
+        `${VIDEO_ID}/source`,
+        DEFAULT_CONFIG.playbackUrlTtlSeconds,
+        { client: 'public' },
+      );
+      const expiresAt = Date.parse(result.expiresAt);
+      expect(expiresAt).toBeGreaterThanOrEqual(
+        before + DEFAULT_CONFIG.playbackUrlTtlSeconds * 1000,
+      );
+      expect(expiresAt).toBeLessThanOrEqual(
+        Date.now() + DEFAULT_CONFIG.playbackUrlTtlSeconds * 1000,
       );
     });
   });

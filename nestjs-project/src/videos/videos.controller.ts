@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   HttpCode,
   HttpStatus,
   Param,
@@ -19,11 +20,13 @@ import {
 import { SkipThrottle } from '@nestjs/throttler';
 import type { JwtPayload } from '../auth/auth.types';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { OptionalAuth } from '../auth/decorators/optional-auth.decorator';
 import { ApiErrorEnvelope } from '../common/openapi/api-error-envelope.dto';
 import { InitiateUploadResponseDto } from './dto/initiate-upload-response.dto';
 import { InitiateUploadDto } from './dto/initiate-upload.dto';
 import { PartUrlsResponseDto } from './dto/part-urls-response.dto';
 import { PartUrlsDto } from './dto/part-urls.dto';
+import { SignedUrlResponseDto } from './dto/signed-url-response.dto';
 import { VideoResponseDto } from './dto/video-response.dto';
 import { VideosService } from './videos.service';
 
@@ -238,5 +241,44 @@ export class VideosController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<VideoResponseDto> {
     return this.videosService.getOwned(id, user.sub);
+  }
+
+  @Get(':publicId/playback')
+  @OptionalAuth()
+  @Header('Cache-Control', 'no-store')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get a streaming URL for a video',
+    description:
+      'Authentication optional. Returns a short-lived presigned GET of the original file, so the `<video>` element streams it with HTTP Range (206) straight from storage. A draft video is visible only to its owner; anyone else gets the same 404 as a missing video.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Presigned streaming URL',
+    type: SignedUrlResponseDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description:
+      'An Authorization header was sent but the token is invalid or expired',
+    schema: ERROR_SCHEMA,
+  })
+  @ApiResponse({
+    status: 404,
+    description:
+      'No such video, malformed publicId, or not visible to the caller (VIDEO_NOT_FOUND)',
+    schema: ERROR_SCHEMA,
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Visible to the caller but not processed yet (VIDEO_NOT_READY)',
+    schema: ERROR_SCHEMA,
+  })
+  async getPlaybackUrl(
+    @CurrentUser() user: JwtPayload | undefined,
+    @Param('publicId') publicId: string,
+  ): Promise<SignedUrlResponseDto> {
+    return this.videosService.getPlaybackUrl(publicId, user?.sub);
   }
 }

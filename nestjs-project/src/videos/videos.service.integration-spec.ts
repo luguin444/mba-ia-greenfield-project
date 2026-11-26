@@ -75,6 +75,27 @@ describe('VideosService (integration, Postgres + MinIO + Redis)', () => {
     return { userId: user.id, channelId: channel.id };
   }
 
+  /** Real upload + complete, then the row is moved to `ready` as the worker would. */
+  async function createReadyVideo(
+    userId: string,
+    overrides: Partial<InitiateUploadDto> = {},
+  ): Promise<Video> {
+    const initiated = await service.initiateUpload(
+      userId,
+      initiateDto({ sizeBytes: 1 * MIB, ...overrides }),
+    );
+    await putPart(initiated.parts[0].url, 1 * MIB);
+    await service.completeUpload(initiated.videoId, userId);
+    await videoRepository.update(
+      { id: initiated.videoId },
+      {
+        processing_status: VideoProcessingStatus.READY,
+        processed_at: () => 'CURRENT_TIMESTAMP',
+      },
+    );
+    return videoRepository.findOneByOrFail({ id: initiated.videoId });
+  }
+
   function initiateDto(
     overrides: Partial<InitiateUploadDto> = {},
   ): InitiateUploadDto {
@@ -388,6 +409,27 @@ describe('VideosService (integration, Postgres + MinIO + Redis)', () => {
       await expect(
         service.initiateUpload(userId, initiateDto()),
       ).resolves.toMatchObject({ partCount: 2 });
+    });
+  });
+
+  describe('getPlaybackUrl', () => {
+    it('should return a minio.localhost URL that answers 206 to a Range request', async () => {
+      const { userId } = await createUserWithChannel('owner');
+      const video = await createReadyVideo(userId);
+
+      const { url } = await service.getPlaybackUrl(video.public_id, userId);
+
+      const parsed = new URL(url);
+      expect(parsed.host).toBe('minio.localhost:9000');
+      expect(parsed.pathname).toBe(`/videos-test/${video.source_key}`);
+      const response = await fetch(url, {
+        headers: { Range: 'bytes=0-1023' },
+      });
+      expect(response.status).toBe(206);
+      expect(response.headers.get('content-range')).toBe(
+        `bytes 0-1023/${1 * MIB}`,
+      );
+      expect((await response.arrayBuffer()).byteLength).toBe(1024);
     });
   });
 });
