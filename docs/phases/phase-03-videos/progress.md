@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 19/21 completed
+**SIs:** 20/21 completed
 
 ### SI-03.1 — Infra: dependências, namespaces de configuração e variáveis de ambiente
 - **Status:** completed
@@ -202,9 +202,16 @@
   - **Leader-requested fix (before SI-03.20, commit `fix(videos): bound sweep job retention in Redis`):** the scheduler template is now `{ attempts: 1, removeOnComplete: { count: 50 }, removeOnFail: { count: 100 } }`, which closes the follow-up above. bullmq 6.7.10 types the template opts as `JobSchedulerTemplateOptions = Omit<JobsOptions, 'jobId' | 'repeat' | 'delay' | 'deduplication'>`, so both `KeepJobs` options are valid there (context7 shows the same in the Job Schedulers guide). `video-maintenance.scheduler.integration-spec.ts` now reads the saved scheduler with `getJobScheduler` and checks the three template options. The plan was updated in the same commit (SI-03.19 action 4 and Tests row, Events/Messages → video-maintenance: queue/scheduler, producer, delivery semantics). After `docker compose restart video-worker`, the dev scheduler (prefix `bull`) shows the new template.
 
 ### SI-03.20 — E2E do pipeline completo (upload → processamento → streaming/download)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 6 passing in `test/videos-pipeline.e2e-spec.ts` (HTTP app + `WorkerModule` in one Jest process, real Postgres, MinIO, Redis and ffmpeg). The file was run 3 times in a row, 6/6 each time (~3 s per run). `tsc --noEmit` 0, eslint 0, prettier clean
+- **Observations:**
+  - `test/helpers/video-pipeline.ts` (plan path) reuses `test/support/videos-e2e.ts` (`createVideosE2eApp`, `closeVideosE2eApp`, `initiateUpload`) instead of duplicating the app setup. `startVideoPipeline()` boots the app and then `WorkerModule` through `Test.createTestingModule(...).init()`, both on prefix `test` and the `-test` buckets. `stopVideoPipeline()` obliterates the test queues and closes the worker first, so no job writes after cleanup. Then it runs `cleanAllTables` while the app's `DataSource` is still open, and `closeVideosE2eApp` empties the `-test` buckets and closes the app. `afterAll` removes the generated file in a `finally`.
+  - Generated video: `testsrc` 640×360 @25 fps + `noise`, libx264 `ultrafast` at a fixed 8 Mbit/s, `-fs 11M`. ffmpeg reads `11M` as 11 000 000 bytes (SI prefix, not MiB). The `moov` index comes after the limit, so the file has **11 389 009 bytes (10.86 MiB, ~14 s)**. The plan says it "passes 11 MiB a little", but the result is still inside the plan's 10–11.5 MiB window and needs 3 parts of 5 MiB, so nothing changed. The helper fails early unless `10 MiB < size < 12 MiB`, and every `sizeBytes` comes from `fs.stat`.
+  - Flows: (a) initiate → PUT part 1 only → `part-urls` with no body answers `uploadedParts [1]` and newly signed `[2, 3]` → PUT → `complete` `202` → `ready` with `sizeBytes`, 640×360, `h264`, `durationSeconds > 0`, `processedAt`. The `thumbnailUrl` is also fetched: `200 image/jpeg` from the public `thumbnails-test`. (b) In a nested `describe`, a separate ready upload (it does not depend on (a)). Playback with `Range: bytes=0-1023` → `206`, `content-range bytes 0-1023/<size>`, 1024-byte body. Download → `attachment;` and a body of the declared size. (c) `not-a-video.mp4` → `failed`/`INVALID_MEDIA`, no thumbnail. (d) Two consecutive initiates → distinct `publicId`s matching `PUBLIC_ID_PATTERN`.
+  - The isolation AC is its own test, per the leader's wording. A `not-a-video.mp4` upload signs part URLs under `/videos-test/{id}/source`. Its job is then found in `test:video-processing`, `failed` with `{ videoId }`: `INVALID_MEDIA` jobs stay in the failed set, so this check is deterministic. A read-only `Queue('video-processing', { prefix: 'bull' })` returns `undefined` for `getJob(videoId)`. The test does not assert "no `bull:*` keys", because the dev `video-worker` legitimately owns `bull:video-maintenance:*`.
+  - `waitForStatus` polls `GET /videos/:id` every 250 ms (the videos controller has `@SkipThrottle()`) and stops early on any other final status, so a pipeline failure reports its `failureReason` instead of timing out.
+  - Open handles: `--detectOpenHandles` reports only `CustomGC` from the native `@css-inline/css-inline`, loaded by `MailerModule`'s Handlebars adapter. The existing `videos-download.e2e-spec.ts` reports the same handle, so it comes from any `AppModule` e2e and not from this SI. Jest exits normally.
+  - After the runs: no `streamtube-pipeline-*` file in the container's `/tmp`. `videos-test`/`thumbnails-test` have 0 objects and 0 incomplete uploads (`mc ls --incomplete`). Redis has no `test:*` keys. `bull:video-processing` has only the container's own `meta` and `stalled-check`. The dev `video-worker` log shows no activity during the runs.
 
 ### SI-03.21 — Documentação: `CLAUDE.md` (raiz e `nestjs-project`) e `openapi.json`
 - **Status:** pending
