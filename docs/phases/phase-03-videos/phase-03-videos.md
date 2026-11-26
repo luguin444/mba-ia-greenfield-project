@@ -1188,31 +1188,31 @@ SI-03.20 — depends on SI-03.10 + SI-03.12 + SI-03.15 + SI-03.18 (full pipeline
 
 ## Deliverables
 
-- [ ] SI-03.1 — Infra: dependências, namespaces de configuração e variáveis de ambiente
-- [ ] SI-03.2 — Infra: FFmpeg na imagem dev e serviços redis, minio e minio-init no Compose
-- [ ] SI-03.3 — Infra: isolamento do ambiente de teste e `--runInBand` no `test:e2e`
-- [ ] SI-03.4 — Entidade `Video`, migration `CreateVideos` e ajustes nos testes existentes
-- [ ] SI-03.5 — Módulo de storage (adapter S3 com client interno e público)
-- [ ] SI-03.6 — Módulo de fila (BullMQ) compartilhado entre API e worker
-- [ ] SI-03.7 — Fundações do domínio de vídeos (exceções, `publicId`, resposta e lookup de canal)
-- [ ] SI-03.8 — Endpoint POST /videos/uploads
-- [ ] SI-03.9 — Endpoint POST /videos/:id/upload/part-urls
-- [ ] SI-03.10 — Endpoint POST /videos/:id/upload/complete
-- [ ] SI-03.11 — Endpoint DELETE /videos/:id/upload
-- [ ] SI-03.12 — Endpoint GET /videos/:id
-- [ ] SI-03.13 — Guard de autenticação opcional (`@OptionalAuth`)
-- [ ] SI-03.14 — Endpoint GET /videos/:publicId/playback
-- [ ] SI-03.15 — Endpoint GET /videos/:publicId/download
-- [ ] SI-03.16 — Infra: `WorkerModule`, entrypoint `src/worker.ts` e serviço `video-worker`
-- [ ] SI-03.17 — Ferramentas de mídia: wrapper `ffprobe`/`ffmpeg` e fixtures
-- [ ] SI-03.18 — Consumer `process-video` (metadados e thumbnail)
-- [ ] SI-03.19 — Varredura de manutenção (`video-maintenance`)
-- [ ] SI-03.20 — E2E do pipeline completo (upload → processamento → streaming/download)
-- [ ] SI-03.21 — Documentação: `CLAUDE.md` (raiz e `nestjs-project`) e `openapi.json`
+- [x] SI-03.1 — Infra: dependências, namespaces de configuração e variáveis de ambiente
+- [x] SI-03.2 — Infra: FFmpeg na imagem dev e serviços redis, minio e minio-init no Compose
+- [x] SI-03.3 — Infra: isolamento do ambiente de teste e `--runInBand` no `test:e2e`
+- [x] SI-03.4 — Entidade `Video`, migration `CreateVideos` e ajustes nos testes existentes
+- [x] SI-03.5 — Módulo de storage (adapter S3 com client interno e público)
+- [x] SI-03.6 — Módulo de fila (BullMQ) compartilhado entre API e worker
+- [x] SI-03.7 — Fundações do domínio de vídeos (exceções, `publicId`, resposta e lookup de canal)
+- [x] SI-03.8 — Endpoint POST /videos/uploads
+- [x] SI-03.9 — Endpoint POST /videos/:id/upload/part-urls
+- [x] SI-03.10 — Endpoint POST /videos/:id/upload/complete
+- [x] SI-03.11 — Endpoint DELETE /videos/:id/upload
+- [x] SI-03.12 — Endpoint GET /videos/:id
+- [x] SI-03.13 — Guard de autenticação opcional (`@OptionalAuth`)
+- [x] SI-03.14 — Endpoint GET /videos/:publicId/playback
+- [x] SI-03.15 — Endpoint GET /videos/:publicId/download
+- [x] SI-03.16 — Infra: `WorkerModule`, entrypoint `src/worker.ts` e serviço `video-worker`
+- [x] SI-03.17 — Ferramentas de mídia: wrapper `ffprobe`/`ffmpeg` e fixtures
+- [x] SI-03.18 — Consumer `process-video` (metadados e thumbnail)
+- [x] SI-03.19 — Varredura de manutenção (`video-maintenance`)
+- [x] SI-03.20 — E2E do pipeline completo (upload → processamento → streaming/download)
+- [x] SI-03.21 — Documentação: `CLAUDE.md` (raiz e `nestjs-project`) e `openapi.json`
 
 **Full test suites:**
 
-- [ ] Backend tests pass (`cd nestjs-project && docker compose exec nestjs-api npm test -- --runInBand`)
-- [ ] E2E tests pass (`cd nestjs-project && docker compose exec nestjs-api npm run test:e2e`)
-- [ ] Type/compilation checks pass (`cd nestjs-project && docker compose exec nestjs-api npx tsc --noEmit`)
-- [ ] Lint passes (`cd nestjs-project && docker compose exec nestjs-api npm run lint`)
+- [x] Backend tests pass (`cd nestjs-project && docker compose exec nestjs-api npm test -- --runInBand`)
+- [x] E2E tests pass (`cd nestjs-project && docker compose exec nestjs-api npm run test:e2e`)
+- [x] Type/compilation checks pass (`cd nestjs-project && docker compose exec nestjs-api npx tsc --noEmit`)
+- [x] Lint passes (`cd nestjs-project && docker compose exec nestjs-api npm run lint`)
