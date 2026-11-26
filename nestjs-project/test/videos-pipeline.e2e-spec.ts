@@ -134,8 +134,13 @@ describe('videos-pipeline', () => {
       });
       expect(video.durationSeconds).toBeGreaterThan(0);
       expect(video.processedAt).not.toBeNull();
-      expect(video.thumbnailUrl).toEqual(expect.any(String));
-      const thumbnail = await fetch(video.thumbnailUrl as string);
+      expect(video.thumbnailUrl).not.toBeNull();
+      const thumbnailUrl = new URL(video.thumbnailUrl as string);
+      expect(thumbnailUrl.host).toBe('minio.localhost:9000');
+      expect(thumbnailUrl.pathname).toBe(
+        `/thumbnails-test/${video.id}/default.jpg`,
+      );
+      const thumbnail = await fetch(thumbnailUrl);
       expect(thumbnail.status).toBe(200);
       expect(thumbnail.headers.get('content-type')).toBe('image/jpeg');
     },

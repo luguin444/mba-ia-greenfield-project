@@ -57,8 +57,13 @@ export async function stopVideoPipeline(
   ctx: VideoPipelineContext,
 ): Promise<void> {
   try {
-    await obliterateTestQueues(ctx.worker);
-    await ctx.worker.close();
+    try {
+      await obliterateTestQueues(ctx.worker);
+    } finally {
+      // Close the consumers even if the wipe fails, or they keep writing to
+      // the DB while the app closes underneath them.
+      await ctx.worker.close();
+    }
     await cleanAllTables(ctx.dataSource);
   } finally {
     await closeVideosE2eApp(ctx);
