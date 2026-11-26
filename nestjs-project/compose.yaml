@@ -63,8 +63,8 @@ services:
   redis:
     image: redis:8-alpine
     command: ["redis-server", "--maxmemory-policy", "noeviction"]
-    ports:
-      - "6379:6379"
+    # No host port: only the containers use Redis (REDIS_HOST=redis). Probe it with
+    # `docker compose exec redis redis-cli ping`.
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
