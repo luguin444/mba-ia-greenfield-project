@@ -128,4 +128,109 @@ describe('exportSpec (integration)', () => {
       }
     }
   });
+
+  describe('videos', () => {
+    const videoOperations = [
+      { path: '/videos/uploads', method: 'post', optionalAuth: false },
+      {
+        path: '/videos/{id}/upload/part-urls',
+        method: 'post',
+        optionalAuth: false,
+      },
+      {
+        path: '/videos/{id}/upload/complete',
+        method: 'post',
+        optionalAuth: false,
+      },
+      { path: '/videos/{id}/upload', method: 'delete', optionalAuth: false },
+      { path: '/videos/{id}', method: 'get', optionalAuth: false },
+      {
+        path: '/videos/{publicId}/playback',
+        method: 'get',
+        optionalAuth: true,
+      },
+      {
+        path: '/videos/{publicId}/download',
+        method: 'get',
+        optionalAuth: true,
+      },
+    ];
+
+    function operationAt(
+      path: string,
+      method: string,
+    ): Record<string, unknown> {
+      const paths = document.paths as Record<
+        string,
+        Record<string, Record<string, unknown>>
+      >;
+      const operation = paths[path]?.[method];
+      expect(operation).toBeDefined();
+      return operation;
+    }
+
+    it('documents exactly the 7 video operations', () => {
+      const paths = document.paths as Record<string, Record<string, unknown>>;
+      const documented = Object.entries(paths)
+        .filter(([path]) => path.startsWith('/videos'))
+        .flatMap(([path, methods]) =>
+          Object.keys(methods).map((method) => `${method} ${path}`),
+        );
+
+      expect(documented.sort()).toEqual(
+        videoOperations.map(({ path, method }) => `${method} ${path}`).sort(),
+      );
+    });
+
+    it.each(videoOperations)(
+      '$method $path has the videos tag, a summary and the access-token security',
+      ({ path, method }) => {
+        const operation = operationAt(path, method);
+
+        expect(operation.tags).toEqual(['videos']);
+        expect(typeof operation.summary).toBe('string');
+        expect((operation.summary as string).length).toBeGreaterThan(0);
+        const security = operation.security as Array<Record<string, unknown>>;
+        expect(security.some((req) => 'access-token' in req)).toBe(true);
+      },
+    );
+
+    it.each(videoOperations.filter(({ optionalAuth }) => optionalAuth))(
+      '$method $path states that authentication is optional',
+      ({ path, method }) => {
+        const operation = operationAt(path, method);
+
+        expect(operation.description).toMatch(/^Authentication optional\./);
+      },
+    );
+
+    it.each(videoOperations)(
+      '$method $path types every error response with ApiErrorEnvelope',
+      ({ path, method }) => {
+        const responses = operationAt(path, method).responses as Record<
+          string,
+          Record<string, unknown>
+        >;
+        const errorStatuses = Object.keys(responses).filter(
+          (status) => Number(status) >= 400,
+        );
+
+        expect(errorStatuses.length).toBeGreaterThan(0);
+        for (const status of errorStatuses) {
+          const content = responses[status].content as Record<
+            string,
+            Record<string, unknown>
+          >;
+          const schema = content?.['application/json']?.schema as Record<
+            string,
+            unknown
+          >;
+          expect({ status, ref: schema?.['$ref'] }).toEqual({
+            status,
+            ref: '#/components/schemas/ApiErrorEnvelope',
+          });
+        }
+      },
+    );
+  });
 });

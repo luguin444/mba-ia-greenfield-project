@@ -88,6 +88,8 @@ Error responses must reference the shared `ApiErrorEnvelope` DTO (`nestjs-projec
 
 Protected handlers (those without `@Public()`) must include `@ApiBearerAuth('access-token')` so Swagger UI offers the Authorize button and includes the `Authorization: Bearer …` header in try-it-out calls. Methods marked `@Public()` must **not** carry `@ApiBearerAuth` — that would falsely advertise the endpoint as requiring auth.
 
+**Exception — optional authentication.** Methods marked `@OptionalAuth()` (anonymous callers allowed, but a valid token changes the result, e.g. an owner seeing their own draft) **do** carry `@ApiBearerAuth('access-token')`, so Swagger UI can send the token. Their `@ApiOperation` `description` must start with `Authentication optional.` to state that the header is not required, and they document the `401` that an invalid or expired token still produces. Reference: `GET /videos/:publicId/playback` and `GET /videos/:publicId/download` in `nestjs-project/src/videos/videos.controller.ts`.
+
 ```typescript
 @Get('me')
 @ApiBearerAuth('access-token')

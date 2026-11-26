@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 20/21 completed
+**SIs:** 21/21 completed
 
 ### SI-03.1 — Infra: dependências, namespaces de configuração e variáveis de ambiente
 - **Status:** completed
@@ -214,6 +214,13 @@
   - After the runs: no `streamtube-pipeline-*` file in the container's `/tmp`. `videos-test`/`thumbnails-test` have 0 objects and 0 incomplete uploads (`mc ls --incomplete`). Redis has no `test:*` keys. `bull:video-processing` has only the container's own `meta` and `stalled-check`. The dev `video-worker` log shows no activity during the runs.
 
 ### SI-03.21 — Documentação: `CLAUDE.md` (raiz e `nestjs-project`) e `openapi.json`
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 26 passing in `src/openapi-export.integration-spec.ts` (9 existing + 17 new: the exact set of 7 video operations; per operation the `videos` tag, a non-empty `summary` and `access-token` security; "Authentication optional." on playback/download; every ≥ 400 response pointing to `ApiErrorEnvelope`). `tsc --noEmit` 0, eslint 0
+- **Observations:**
+  - `openapi.json` regenerated with `docker compose exec nestjs-api npm run openapi:export`: +827 lines, only additions (the 7 `/videos` paths and their DTO schemas). Playback/download declare `security: [{ access-token: [] }]`. The controller already met the contract, so the new tests passed on the first run without code changes.
+  - Root `CLAUDE.md`: "three main areas", `next-frontend/` described as it is today (App Router, its own `CLAUDE.md`/Compose, auth screens, BFF in `next-frontend/app/api/`), Message Queue = BullMQ on Redis, Object Storage = S3-compatible/MinIO locally, Video Worker = its own `video-worker` container from the same code (`src/worker.ts`), Frontend ↔ storage through presigned URLs. `docs/diagrams/software-arch.mermaid`: queue `BullMQ on Redis` (no "TBD"), worker `Nest.js + FFmpeg` as its own container, frontend → storage "Uploads parts and streams/downloads via presigned URLs", API → storage "Opens/completes multipart uploads and signs URLs" (per TD-05/TD-10).
+  - `nestjs-project/CLAUDE.md`: the video-worker exception to "infra only", probes (`pg_isready`, `redis-cli ping`, MinIO `(healthy)`/host curl/Node `fetch` inside containers, worker log lines), setup order `cp .env.example .env` → `up -d` → `npm install` → `migration:run` → `restart video-worker`, `docker compose build` after `Dockerfile.dev` changes, the full service list (mailpit, redis, minio, minio-init, video-worker), new commands (`start:worker`, `migration:run`, `openapi:export`), new "Video Worker" and "Vídeos" sections (files, 7-endpoint table, flow, buckets/keys, TD-12 status mapping). Every file, npm script and endpoint cited was checked by a script against the repo. The only "misses" were bare names that live elsewhere (`src/test/setup-test-env.ts`, `src/config/mail.config.ts`, `.claude/rules/auth-jwt.md`), and the root BFF path was made explicit. The probes were run before they were documented (host curl `200`, Node `fetch` in `nestjs-api` `200`, `mc ready` → ready).
+  - Leader item (a): `.claude/rules/nestjs-controllers.md` now has the optional-auth exception. `@OptionalAuth()` routes carry `@ApiBearerAuth('access-token')`, their description starts with `Authentication optional.` and they document the `401` for an invalid token. This closes the SI-03.14 follow-up.
+  - Leader item (b): the "Test execution" section of `nestjs-project/CLAUDE.md` is rewritten. `npm test` and `test:e2e` already carry `--runInBand`, and isolation comes from `src/test/setup-test-env.ts` (prefix `test`, `-test` buckets, 12 MiB/5 MiB limits) plus `obliterateTestQueues`/`resetVideoTestBuckets`. The pipeline e2e is mentioned, and the "Jest Configuration" bullet lists both `setupFiles`. This closes the SI-03.3 follow-up.
+  - Leader item (c), reproduced before documenting: `docker compose stop video-worker` logs `Video worker stopped (SIGTERM)`, then `npm error command failed` / `npm error signal SIGTERM`, and the container ends `Exited (1)`. This is documented as expected in "Video Worker". `docker compose start video-worker` brought it back (`Consuming …`).
+  - Leader item (d), separate commit `chore(compose): stop publishing redis port to the host`: a grep of the repo (scripts, docs, tests, `.mcp.json`, which only has postgres) found no host-side use of `6379`. Every reference is container-internal (`REDIS_HOST=redis`). The host also runs its own native `redis-server` on `127.0.0.1:6379` (SI-03.2 note), so the published port only made `localhost:6379` ambiguous. `docker compose up -d redis` recreated only that service (ports now `6379/tcp`, internal only, still `noeviction`, `PONG`). The Redis data is not on a volume, so the dev queue keys were reset; `docker compose restart video-worker` re-upserted the scheduler, and the first sweep logged `Sweep done: 0 …`. `queue.module` + scheduler integration specs pass afterwards (6/6). The plan's "porta `6379`" (SI-03.2, Infrastructure) still holds as the container port.
