@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 12/21 completed
+**SIs:** 13/21 completed
 
 ### SI-03.1 — Infra: dependências, namespaces de configuração e variáveis de ambiente
 - **Status:** completed
@@ -121,9 +121,13 @@
   - The e2e checks that the body has no `uploadId`/`upload_id`/`sourceKey`/`source_key`/`channelId`/`channel_id`. The mapper never copies them, so this guards against a future regression.
 
 ### SI-03.13 — Guard de autenticação opcional (`@OptionalAuth`)
-- **Status:** pending
-- **Tests:** —
+- **Status:** completed
+- **Tests:** 10 passing in `src/auth/guards/jwt-auth.guard.spec.ts` (5 existing + 5 new). `test/auth.e2e-spec.ts` re-run in full: 45/45
 - **Observations:**
+  - The guard's unit test now mocks `Reflector.getAllAndOverride` per metadata key. The old mock returned the same value for any key, so with the new optional-auth lookup the `@Public()` test would have run the optional branch. The `@Public()` test now also proves the header is never read (the `headers` getter is a spy that must not be called).
+  - Optional-auth branches covered: no header → anonymous; non-`Bearer` header (e.g. `Basic …`) → anonymous, as the Authorization Matrix says ("no `Authorization` header (or not `Bearer `)"); valid token → `request.user` = payload; expired token (`jwtService.sign(payload, { expiresIn: -60 })`) → `401` with `request.user` untouched; invalid token → `401`.
+  - `@OptionalAuth()` has no route yet in this SI. The HTTP-level ACs (anonymous, valid token via `@CurrentUser()`, expired token → `401`) are proven by the playback e2e in SI-03.14.
+  - `CurrentUser` is unchanged (it still declares `JwtPayload`). Optional-auth handlers type the parameter `JwtPayload | undefined`, as the plan says.
   - **Pre-SI hygiene (leader request, outside the SIs, commit `test(videos): clean test buckets after video suites`):** the video suites left `videos-test` dirty (180 open multipart uploads and 148 MiB in 22 objects before this block). New helper `resetVideoTestBuckets(moduleRef)` in `src/test/storage.ts` uses the module's real internal S3 client and config. It aborts every open multipart upload (`ListMultipartUploads` paged by `KeyMarker`/`UploadIdMarker`; the SDK has no paginator for it) and deletes every object (`paginateListObjectsV2` + one `DeleteObject` per key, because `DeleteObjects` sends the SDK's default CRC checksum, which S3-compatible stores do not all accept) in `videos-test` and `thumbnails-test`. It throws before any S3 call if either bucket name does not end in `-test` (unit test `src/test/storage.spec.ts`, 2 cases). It runs in the `afterAll` of `storage.service.integration-spec.ts`, `videos.service.integration-spec.ts` and every video e2e suite (through `closeVideosE2eApp`), before the module is closed. MinIO answers `ListMultipartUploads` with no prefix (all 180 listed), so no per-key listing was needed. After the storage + videos integration suites and the 5 video e2e suites: `mc ls --incomplete --recursive local/videos-test` → 0, `mc du` → 0 objects in both buckets.
 
 ### SI-03.14 — Endpoint GET /videos/:publicId/playback
