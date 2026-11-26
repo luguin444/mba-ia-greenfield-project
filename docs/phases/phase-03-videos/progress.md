@@ -1,6 +1,6 @@
 # phase-03-videos — Progress
 
-**Status:** in_progress
+**Status:** completed
 **SIs:** 21/21 completed
 
 ### SI-03.1 — Infra: dependências, namespaces de configuração e variáveis de ambiente
@@ -224,3 +224,12 @@
   - Leader item (b): the "Test execution" section of `nestjs-project/CLAUDE.md` is rewritten. `npm test` and `test:e2e` already carry `--runInBand`, and isolation comes from `src/test/setup-test-env.ts` (prefix `test`, `-test` buckets, 12 MiB/5 MiB limits) plus `obliterateTestQueues`/`resetVideoTestBuckets`. The pipeline e2e is mentioned, and the "Jest Configuration" bullet lists both `setupFiles`. This closes the SI-03.3 follow-up.
   - Leader item (c), reproduced before documenting: `docker compose stop video-worker` logs `Video worker stopped (SIGTERM)`, then `npm error command failed` / `npm error signal SIGTERM`, and the container ends `Exited (1)`. This is documented as expected in "Video Worker". `docker compose start video-worker` brought it back (`Consuming …`).
   - Leader item (d), separate commit `chore(compose): stop publishing redis port to the host`: a grep of the repo (scripts, docs, tests, `.mcp.json`, which only has postgres) found no host-side use of `6379`. Every reference is container-internal (`REDIS_HOST=redis`). The host also runs its own native `redis-server` on `127.0.0.1:6379` (SI-03.2 note), so the published port only made `localhost:6379` ambiguous. `docker compose up -d redis` recreated only that service (ports now `6379/tcp`, internal only, still `noeviction`, `PONG`). The Redis data is not on a volume, so the dev queue keys were reset; `docker compose restart video-worker` re-upserted the scheduler, and the first sweep logged `Sweep done: 0 …`. `queue.module` + scheduler integration specs pass afterwards (6/6). The plan's "porta `6379`" (SI-03.2, Infrastructure) still holds as the container port.
+
+### Final verification (end of block W4.6)
+- **Backend tests:** `docker compose exec nestjs-api npm test` → 367/367 (45 suites)
+- **E2E tests:** `docker compose exec nestjs-api npm run test:e2e` → 101/101 (11 suites, including `videos-pipeline`)
+- **Type check:** `docker compose exec nestjs-api npx tsc --noEmit` → exit 0
+- **Lint:** `docker compose exec nestjs-api npm run lint` → exit 0, no files changed by `--fix`
+- **Build:** `docker compose exec nestjs-api npm run build` → exit 0 (`dist/main.js`, `dist/worker.js`)
+- **Leftovers:** `videos-test`/`thumbnails-test` have 0 objects and 0 incomplete uploads (`mc ls --incomplete --recursive`). Redis has only the two empty `test:*:meta` keys. `docker compose ps`: db, mailpit, minio (healthy), redis (healthy, no host port), nestjs-api and video-worker `running` (`RestartCount=0`), minio-init `Exited (0)`. The `video-worker` log shows no job activity from the test runs.
+- **Block W4.6 commits:** `fix(videos): bound sweep job retention in Redis`, `feat(videos): SI-03.20 …`, `chore(compose): stop publishing redis port to the host`, `docs: SI-03.21 …`, and this closing commit.
