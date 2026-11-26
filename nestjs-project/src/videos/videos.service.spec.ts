@@ -866,4 +866,38 @@ describe('VideosService', () => {
       );
     });
   });
+
+  describe('getDownloadUrl', () => {
+    it('should sign the source with the public client, the playback TTL and an attachment disposition of the original name', async () => {
+      videoRepository.findOne.mockResolvedValue(
+        videoFixture({
+          processing_status: VideoProcessingStatus.READY,
+          upload_id: null,
+          original_filename: 'Férias.mp4',
+        }),
+      );
+
+      await service.getDownloadUrl('abcdefghijk', USER_ID);
+
+      expect(storageService.presignGetObject).toHaveBeenCalledWith(
+        `${VIDEO_ID}/source`,
+        DEFAULT_CONFIG.playbackUrlTtlSeconds,
+        {
+          client: 'public',
+          disposition: `attachment; filename="Ferias.mp4"; filename*=UTF-8''F%C3%A9rias.mp4`,
+        },
+      );
+    });
+
+    it('should apply the playback visibility rule (anonymous on a draft → VIDEO_NOT_FOUND)', async () => {
+      videoRepository.findOne.mockResolvedValue(
+        videoFixture({ processing_status: VideoProcessingStatus.READY }),
+      );
+
+      await expect(
+        service.getDownloadUrl('abcdefghijk'),
+      ).rejects.toBeInstanceOf(VideoNotFoundException);
+      expect(storageService.presignGetObject).not.toHaveBeenCalled();
+    });
+  });
 });

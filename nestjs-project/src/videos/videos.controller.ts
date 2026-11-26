@@ -281,4 +281,43 @@ export class VideosController {
   ): Promise<SignedUrlResponseDto> {
     return this.videosService.getPlaybackUrl(publicId, user?.sub);
   }
+
+  @Get(':publicId/download')
+  @OptionalAuth()
+  @Header('Cache-Control', 'no-store')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get a download URL for a video',
+    description:
+      'Authentication optional. Returns a short-lived presigned GET of the original file; storage answers with `Content-Disposition: attachment` and the original file name. Same access rule as playback: a draft video is visible only to its owner; anyone else gets the same 404 as a missing video.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Presigned download URL',
+    type: SignedUrlResponseDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description:
+      'An Authorization header was sent but the token is invalid or expired',
+    schema: ERROR_SCHEMA,
+  })
+  @ApiResponse({
+    status: 404,
+    description:
+      'No such video, malformed publicId, or not visible to the caller (VIDEO_NOT_FOUND)',
+    schema: ERROR_SCHEMA,
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Visible to the caller but not processed yet (VIDEO_NOT_READY)',
+    schema: ERROR_SCHEMA,
+  })
+  async getDownloadUrl(
+    @CurrentUser() user: JwtPayload | undefined,
+    @Param('publicId') publicId: string,
+  ): Promise<SignedUrlResponseDto> {
+    return this.videosService.getDownloadUrl(publicId, user?.sub);
+  }
 }

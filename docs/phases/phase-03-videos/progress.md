@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 14/21 completed
+**SIs:** 15/21 completed
 
 ### SI-03.1 — Infra: dependências, namespaces de configuração e variáveis de ambiente
 - **Status:** completed
@@ -142,9 +142,14 @@
   - `publicId` has no validation pipe on purpose. A malformed value must answer `404 VIDEO_NOT_FOUND` like a missing one (never `400`), so the pattern check is in the service and skips the DB.
 
 ### SI-03.15 — Endpoint GET /videos/:publicId/download
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 13 new, passing for the SI: `src/videos/content-disposition.util.spec.ts` 5, `src/videos/videos.service.spec.ts` +2 (53 total), `src/videos/videos.service.integration-spec.ts` +1 (14 total), `test/videos-download.e2e-spec.ts` 5 (the 5 spec scenarios). End of block W4.4: full `npm test -- --runInBand` 298/298 (36 suites), full `npm run test:e2e` 95/95 (10 suites), `tsc --noEmit` 0, `npm run lint` 0, `mc ls --incomplete --recursive local/videos-test` → 0 (and 0 objects in `videos-test` / `thumbnails-test`)
+- **Observations:**
+  - `buildAttachmentDisposition`: the ASCII `filename` drops accents (NFKD + strip combining marks) and turns every other character outside printable ASCII, plus `"` and `\`, into `_`. The regex uses the `u` flag, so an emoji (a surrogate pair) becomes one `_`, not two. `filename*` is `encodeURIComponent` plus `'`, `(`, `)`, `*` percent-encoded, because RFC 5987 `attr-char` does not allow them. Control characters (CR/LF/TAB) are `_` in `filename` and percent-encoded in `filename*`, so the header cannot be split.
+  - The integration test proves MinIO answers the presigned GET with the exact header (`attachment; filename="Ferias em Sao Paulo.mp4"; filename*=UTF-8''F%C3%A9rias%20em%20S%C3%A3o%20Paulo.mp4`) and the full 1 MiB body. The e2e checks the emoji name: printable-ASCII `filename` ending in `.mp4`, and `filename*` decodes back to `Férias em São Paulo 🎬.mp4`.
+  - `getDownloadUrl` and `getPlaybackUrl` share `resolveViewable` and a private `signSourceGet(video, disposition?)`. The only difference is the disposition.
+  - `VIDEO_NOT_READY` keeps the catalog message "Video is not ready for playback" on the download route too, as the download spec expects. The Error Catalog has a single message for both routes.
+  - `@ApiBearerAuth` on this optional-auth route: same note as SI-03.14 (the plan overrides the general `@Public()` rule in `nestjs-controllers.md`).
 
 ### SI-03.16 — Infra: `WorkerModule`, entrypoint `src/worker.ts` e serviço `video-worker`
 - **Status:** pending

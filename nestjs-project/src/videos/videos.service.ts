@@ -38,6 +38,7 @@ import {
   VideoProcessingStatus,
   VideoPublicationStatus,
 } from './entities/video.entity';
+import { buildAttachmentDisposition } from './content-disposition.util';
 import { generatePublicId, PUBLIC_ID_PATTERN } from './public-id.util';
 import { toVideoResponse } from './video-response.mapper';
 import {
@@ -294,6 +295,18 @@ export class VideosService {
     return this.signSourceGet(video);
   }
 
+  /** Same access rule as playback; storage answers with the original file name as an attachment. */
+  async getDownloadUrl(
+    publicId: string,
+    callerId?: string,
+  ): Promise<SignedUrlResponseDto> {
+    const video = await this.resolveViewable(publicId, callerId);
+    return this.signSourceGet(
+      video,
+      buildAttachmentDisposition(video.original_filename),
+    );
+  }
+
   /**
    * Owner abort: frees the storage space of the parts and the channel's
    * active-upload slot. An upload already gone from storage is not an error.
@@ -463,13 +476,16 @@ export class VideosService {
     return channelId === video.channel_id;
   }
 
-  private async signSourceGet(video: Video): Promise<SignedUrlResponseDto> {
+  private async signSourceGet(
+    video: Video,
+    disposition?: string,
+  ): Promise<SignedUrlResponseDto> {
     const ttlSeconds = this.config.playbackUrlTtlSeconds;
     const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
     const url = await this.storageService.presignGetObject(
       video.source_key,
       ttlSeconds,
-      { client: 'public' },
+      { client: 'public', disposition },
     );
     return { url, expiresAt };
   }

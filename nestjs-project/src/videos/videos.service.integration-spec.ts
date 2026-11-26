@@ -432,4 +432,23 @@ describe('VideosService (integration, Postgres + MinIO + Redis)', () => {
       expect((await response.arrayBuffer()).byteLength).toBe(1024);
     });
   });
+
+  describe('getDownloadUrl', () => {
+    it('should return a URL whose GET answers with Content-Disposition: attachment and the original name', async () => {
+      const { userId } = await createUserWithChannel('owner');
+      const fileName = 'Férias em São Paulo.mp4';
+      const video = await createReadyVideo(userId, { fileName });
+
+      const { url } = await service.getDownloadUrl(video.public_id, userId);
+
+      expect(new URL(url).host).toBe('minio.localhost:9000');
+      const response = await fetch(url);
+      expect(response.status).toBe(200);
+      const disposition = response.headers.get('content-disposition') ?? '';
+      expect(disposition).toBe(
+        `attachment; filename="Ferias em Sao Paulo.mp4"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+      );
+      expect((await response.arrayBuffer()).byteLength).toBe(1 * MIB);
+    });
+  });
 });
