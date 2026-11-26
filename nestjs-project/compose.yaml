@@ -19,6 +19,27 @@ services:
       minio-init:
         condition: service_completed_successfully
 
+  # Queue consumer process (src/worker.ts): same image, code and .env as the API, no HTTP port.
+  # On a fresh clone it starts before node_modules/.env/migrations exist, so it relies on the
+  # restart policy (or `docker compose restart video-worker` after `npm install` + `migration:run`).
+  video-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    command: ["npm", "run", "start:worker"]
+    restart: unless-stopped
+    volumes:
+      - .:/home/node/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+
   db:
     image: postgres:17
     ports:

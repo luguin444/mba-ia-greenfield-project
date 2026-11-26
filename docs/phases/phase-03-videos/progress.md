@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 15/21 completed
+**SIs:** 16/21 completed
 
 ### SI-03.1 — Infra: dependências, namespaces de configuração e variáveis de ambiente
 - **Status:** completed
@@ -153,9 +153,15 @@
   - **Leader follow-up (W4.4 gate, committed at the start of W4.5 as `test(videos): tighten playback/download assertions and e2e teardown`):** the download e2e happy path now compares `Content-Disposition` by full equality (as `videos.service.integration-spec.ts` already did); the playback e2e 409 for an `uploading` video uses `toEqual` on the whole body (same as the `processing` case); `closeVideosE2eApp` wraps the queue/bucket cleanup in `try/finally` so `app.close()` runs even if the cleanup throws. `videos-download` + `videos-playback` e2e: 11/11.
 
 ### SI-03.16 — Infra: `WorkerModule`, entrypoint `src/worker.ts` e serviço `video-worker`
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 3 passing (`src/worker/worker.module.integration-spec.ts`: Postgres connection + `Video → Channel → User` relation query, both queues on the `test` prefix + `StorageService`, no controller and no `AuthModule`/`ThrottlerModule`/`VideosModule`). Regression on the touched wiring: `videos.module.spec.ts`, `migrations.integration-spec.ts`, `test/app.e2e-spec.ts` (`GET /` 200) green; `tsc --noEmit` 0, eslint 0 on the changed files
+- **Observations:**
+  - `buildTypeOrmOptions` lives in `src/database/typeorm-options.ts`. The `ConfigModule.forRoot` options (load + Joi + `validationOptions`) also moved to `configModuleOptions` in `src/config/config-load.ts`, so `AppModule` and `WorkerModule` share both without copying the object (same reason as the TypeORM builder).
+  - **Plan deviation (`exec` in `start:worker`):** the script is `exec ts-node -r tsconfig-paths/register src/worker.ts`. Without `exec`, `npm run` starts `sh -c` (dash), which does not exec the command. `docker compose stop` sends SIGTERM to npm (PID 1), npm forwards it to `sh`, `sh` dies, and node is SIGKILLed with the container **without running the shutdown hooks** (reproduced: no "stopped" log on `stop`, but the log appears when SIGTERM goes straight to node). With `exec`, node is npm's direct child and gets the forwarded signal. The compose `command` is still `npm run start:worker`, as the plan says.
+  - `WorkerModule` implements `OnApplicationShutdown` only to log `Video worker stopped (<signal>)`. That line is the evidence that the hooks ran. Container check: `docker compose up -d video-worker` → `Up`, no published ports, `RestartCount=0`, `restart: unless-stopped`; log `Video worker started (redis redis:6379, queue prefix "bull")`; `docker compose stop video-worker` returns in ~1 s with `Video worker stopped (SIGTERM)` in the log.
+  - After the hooks, Nest re-raises SIGTERM on its own process, so npm prints `npm error signal SIGTERM` and the container exits with code 1. This is cosmetic: the shutdown is complete, and with `unless-stopped` a manual stop is never restarted. When node was killed directly (not via `stop`), the restart policy brought the container back on its own.
+  - The container uses `QUEUE_PREFIX=bull` from `.env`; Jest forces `test` (`setup-test-env.ts`), so the container cannot consume test jobs. Re-checked once the processors exist (SI-03.18/03.19).
+  - AC "fresh environment (`down -v && up -d`)" was not run here: it wipes the shared dev Postgres/MinIO volumes. It belongs to the leader gate / E5 DoD from scratch. Restart-policy recovery is covered by the kill test above.
 
 ### SI-03.17 — Ferramentas de mídia: wrapper `ffprobe`/`ffmpeg` e fixtures
 - **Status:** pending
