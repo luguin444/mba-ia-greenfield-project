@@ -33,3 +33,6 @@ export const THUMBNAIL_CONTENT_TYPE = 'image/jpeg';
 
 /** Prefix of the local frame file in `os.tmpdir()`, removed after every job. */
 export const THUMBNAIL_TMP_PREFIX = 'streamtube-thumbnail-';
+
+/** Most rows one sweep tick handles per category (stale uploads, orphans). */
+export const SWEEP_BATCH_SIZE = 100;

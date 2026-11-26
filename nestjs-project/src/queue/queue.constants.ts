@@ -4,6 +4,10 @@ export const VIDEO_PROCESSING_QUEUE = 'video-processing';
 export const VIDEO_MAINTENANCE_QUEUE = 'video-maintenance';
 export const PROCESS_VIDEO_JOB = 'process-video';
 
+/** Job Scheduler of the maintenance sweep (declared only by the worker). */
+export const VIDEO_MAINTENANCE_SCHEDULER_ID = 'video-maintenance-sweep';
+export const VIDEO_MAINTENANCE_SWEEP_JOB = 'sweep';
+
 export const QUEUE_NAMES = [
   VIDEO_PROCESSING_QUEUE,
   VIDEO_MAINTENANCE_QUEUE,

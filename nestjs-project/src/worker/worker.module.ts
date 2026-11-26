@@ -10,6 +10,9 @@ import { StorageModule } from '../storage/storage.module';
 import { User } from '../users/entities/user.entity';
 import { Video } from '../videos/entities/video.entity';
 import { MediaToolsService } from '../videos/processing/media-tools.service';
+import { VideoMaintenanceConsumer } from '../videos/processing/video-maintenance.consumer';
+import { VideoMaintenanceScheduler } from '../videos/processing/video-maintenance.scheduler';
+import { VideoMaintenanceService } from '../videos/processing/video-maintenance.service';
 import { VideoProcessingConsumer } from '../videos/processing/video-processing.consumer';
 import { VideoProcessingService } from '../videos/processing/video-processing.service';
 
@@ -37,6 +40,9 @@ import { VideoProcessingService } from '../videos/processing/video-processing.se
     MediaToolsService,
     VideoProcessingService,
     VideoProcessingConsumer,
+    VideoMaintenanceService,
+    VideoMaintenanceConsumer,
+    VideoMaintenanceScheduler,
   ],
 })
 export class WorkerModule implements OnApplicationShutdown {

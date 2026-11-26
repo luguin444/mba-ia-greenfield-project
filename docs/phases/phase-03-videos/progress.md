@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 18/21 completed
+**SIs:** 19/21 completed
 
 ### SI-03.1 — Infra: dependências, namespaces de configuração e variáveis de ambiente
 - **Status:** completed
@@ -188,9 +188,17 @@
   - The pg `DeprecationWarning` ("client.query() when the client is already executing a query") printed by this suite also appears in the existing `videos.service.integration-spec.ts`. It comes from the TypeORM/pg stack, not this SI. Out of scope.
 
 ### SI-03.19 — Varredura de manutenção (`video-maintenance`)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 15 new, passing: `video-maintenance.service.spec.ts` 9, `video-maintenance.service.integration-spec.ts` 5 (Postgres + MinIO + Redis, with real multipart uploads and a real BullMQ `failed` job), `video-maintenance.scheduler.integration-spec.ts` 1; `worker.module.integration-spec.ts` +1 (4 total); `tsc --noEmit` 0, eslint 0
+- **Observations:**
+  - The inactivity filter is `updated_at < now() - make_interval(secs => :s)` through `Raw` inside `repository.find` (oldest first, `take: 100`). It compares with the **DB clock** that writes `updated_at`, not the Node clock, and keeps `find` easy to mock in the unit test.
+  - Stale uploads: conditional claim (`WHERE id AND processing_status = 'uploading'`) → `failed`/`UPLOAD_ABANDONED`/`upload_id = null`. `abortMultipartUpload` with the **previous** `upload_id` runs only when the claim affected 1 row. The integration test simulates the lost race: `find` returns the `uploading` snapshot while the row has already moved to `processing`. The multipart survives (`ListParts` still answers) and the row is untouched.
+  - Orphaned processing: `getJob(videoId)` missing → `add(process-video, { videoId }, processVideoJobOptions(videoId))` (integration checks `jobId = videoId`, attempts 3, exponential 5 s). `failed` → conditional update to `failed`/`PROCESSING_ERROR`. Every other state → left alone. The failed job in the integration test comes from a throwaway BullMQ `Worker` that throws `UnrecoverableError`. Row errors are logged (`Logger.error`, asserted in the unit test) and counted, and the batch goes on (background-job exception in `nestjs-services.md`).
+  - Sweeps return counts. The consumer logs `Sweep done: N abandoned upload(s), N re-enqueued, N failed, N row error(s)` and returns them as the job's `returnvalue`.
+  - **`every` runs the first job at once** (bullmq 6.7.10 `job-scheduler.js`: "Job will run immediately anyway"). Consequences: (1) `worker.module.integration-spec.ts` now runs `cleanAllTables` between `compile()` and `init()`, waits for that first sweep and asserts its `returnvalue` is all zeros. This keeps the sweep deterministic and makes sure no sweep job is active during teardown. (2) In the container, the first bootstrap swept at once; a later restart (re-upsert) kept the existing schedule (`next` unchanged, a single delayed job) and did not sweep again.
+  - Container check (prefix `bull`), after two `docker compose restart video-worker`: `getJobSchedulers()` → one `video-maintenance-sweep` with `every: 900000`; log `Job Scheduler "video-maintenance-sweep" every 900000 ms`, `Consuming "video-processing"`, `Consuming "video-maintenance"`, `Sweep done: 0 …`; `RestartCount=0`, `running`.
+  - **Follow-up (not changed, it is the plan's contract):** the scheduler template is `{ attempts: 1 }` as written, so **completed sweep jobs stay in Redis** (`completed: 1` after the first tick). That is about 96 hashes a day under `noeviction`. Suggest adding `removeOnComplete: true` + `removeOnFail: { count: N }` to the template via `/plan-build` append-mode (corrective SI), or in SI-03.21 if the leader prefers.
+  - Known residual, unchanged: the container sweep (prefix `bull`, every 15 min) reads the same Postgres as the tests. Aged rows only exist for the few milliseconds of a test, and no intermittent failure showed up in these runs.
 
 ### SI-03.20 — E2E do pipeline completo (upload → processamento → streaming/download)
 - **Status:** pending

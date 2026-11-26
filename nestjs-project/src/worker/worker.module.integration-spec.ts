@@ -7,13 +7,18 @@ import { DataSource } from 'typeorm';
 import { Channel } from '../channels/entities/channel.entity';
 import {
   VIDEO_MAINTENANCE_QUEUE,
+  VIDEO_MAINTENANCE_SCHEDULER_ID,
   VIDEO_PROCESSING_QUEUE,
 } from '../queue/queue.constants';
 import { StorageService } from '../storage/storage.service';
+import { cleanAllTables } from '../test/create-test-data-source';
 import { obliterateTestQueues } from '../test/queues';
 import { User } from '../users/entities/user.entity';
 import { Video } from '../videos/entities/video.entity';
+import type { MaintenanceSweepResult } from '../videos/processing/video-maintenance.consumer';
 import { WorkerModule } from './worker.module';
+
+const FIRST_SWEEP_TIMEOUT_MS = 10000;
 
 describe('WorkerModule (integration, Postgres + Redis)', () => {
   let moduleRef: TestingModule;
@@ -22,6 +27,9 @@ describe('WorkerModule (integration, Postgres + Redis)', () => {
     moduleRef = await Test.createTestingModule({
       imports: [WorkerModule],
     }).compile();
+    // Bootstrapping upserts the maintenance scheduler, whose first sweep runs
+    // at once against the shared DB: start it from empty tables.
+    await cleanAllTables(moduleRef.get(DataSource));
     await moduleRef.init();
   }, 30000);
 
@@ -67,5 +75,28 @@ describe('WorkerModule (integration, Postgres + Redis)', () => {
     expect(moduleNames).not.toContain('AuthModule');
     expect(moduleNames).not.toContain('ThrottlerModule');
     expect(moduleNames).not.toContain('VideosModule');
+  });
+
+  it('should declare the maintenance scheduler and run its first sweep on bootstrap', async () => {
+    const queue = moduleRef.get<Queue>(getQueueToken(VIDEO_MAINTENANCE_QUEUE), {
+      strict: false,
+    });
+
+    const deadline = Date.now() + FIRST_SWEEP_TIMEOUT_MS;
+    let completed = await queue.getJobs(['completed']);
+    while (completed.length === 0 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      completed = await queue.getJobs(['completed']);
+    }
+
+    const schedulers = await queue.getJobSchedulers();
+    expect(schedulers.map((scheduler) => scheduler.key)).toEqual([
+      VIDEO_MAINTENANCE_SCHEDULER_ID,
+    ]);
+    expect(completed).toHaveLength(1);
+    expect(completed[0].returnvalue).toEqual<MaintenanceSweepResult>({
+      staleUploads: { abandoned: 0, errors: 0 },
+      orphanedProcessing: { requeued: 0, failed: 0, errors: 0 },
+    });
   });
 });
